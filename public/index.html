@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>WareHouse - Part Store</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <h1>Part Store</h1>
+  <p><a href="/home.html" style="font-size:14px">← Til Hjem / Oversikt</a></p>
+
+  <section>
+    <h2>Registrer lokasjon</h2>
+    <input id="loc-name" placeholder="Navn">
+    <input id="loc-barcode" placeholder="Barcode (f.eks LOC-A1)">
+    <button id="add-loc">Legg til</button>
+    <div id="locations"></div>
+  </section>
+
+  <section>
+    <h2>Registrer del</h2>
+    <div class="form-row">
+      <div class="col">
+        <label>Delenummer</label>
+        <input id="part-number" placeholder="TAN-000623">
+      </div>
+      <div class="col">
+        <label>Beskrivelse</label>
+        <input id="part-desc" placeholder="Beskrivelse">
+      </div>
+      <div class="col small">
+        <label>Min antall</label>
+        <input id="part-min" type="number" placeholder="0">
+      </div>
+    </div>
+    <div class="actions">
+      <button id="add-part" class="btn">Legg til del</button>
+      <div id="barcode-preview" class="barcode-box"></div>
+    </div>
+    <div id="parts" class="list"></div>
+  </section>
+
+  <section>
+    <h2>Skann inn/ut</h2>
+    <input id="scan-location" placeholder="Lokasjon barcode">
+    <input id="scan-part" placeholder="Delenummer">
+    <input id="scan-qty" type="number" placeholder="Antall" value="1">
+    <button id="scan-in">Inn</button>
+    <button id="scan-out">Ut</button>
+    <div id="scan-result"></div>
+  </section>
+
+  <script src="/app.js"></script>
+</body>
+</html>

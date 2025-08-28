@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PartStore - Mobile</title>
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    /* mobile specific tweaks */
+    body{padding:12px}
+    .screen{max-width:720px;margin:0 auto}
+    #video {width:100%;height:auto;border-radius:8px;background:#000}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .hidden{display:none}
+    .center{text-align:center}
+  </style>
+</head>
+<body>
+  <div class="screen">
+    <h2>PartStore — Mobil</h2>
+
+    <div id="login-screen">
+      <label>Passord for mobil</label>
+      <input id="mobile-pass" type="password" placeholder="Skriv passord">
+      <button id="mobile-login" class="btn">Logg inn</button>
+      <div class="muted">Passordet settes i `.env` som MOBILE_PASS (kan legges til senere).</div>
+    </div>
+
+    <div id="main-screen" class="hidden">
+  <!-- ngrok seksjon fjernet -->
+      <div class="center">
+        <label>Velg eller skann lokasjon</label>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <select id="loc-select" style="flex:1"></select>
+        <button id="scan-loc" class="btn">Skann lokasjon</button>
+      </div>
+
+      <div id="scanner-area" style="margin-top:12px">
+        <div id="video"></div>
+        <div class="controls">
+          <button id="start-scan" class="btn">Start skanning</button>
+          <button id="stop-scan" class="btn">Stopp</button>
+          <button id="manual-add" class="btn">Manuell registrering</button>
+        </div>
+        <div id="scan-status" class="muted" style="margin-top:8px"></div>
+      </div>
+
+      <div style="margin-top:12px">
+        <h3>Siste skann</h3>
+        <div id="last-scan">Ingen</div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+  <script src="/mobile.js"></script>
+</body>
+</html>

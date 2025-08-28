@@ -1,0 +1,26 @@
+:root{ --accent:#0b6efd; --muted:#666; --bg:#f7f9fc }
+*{box-sizing:border-box}
+body { font-family: Inter, -apple-system, system-ui, Roboto, 'Segoe UI', Arial; padding: 24px; background:var(--bg); color:#222 }
+section { margin-bottom: 20px; background:#fff; border-radius:8px; box-shadow:0 1px 3px rgba(10,10,10,0.05); padding:16px }
+h1 { margin-top: 0; font-weight:600 }
+input, button { font-size:14px; padding:8px 10px; border-radius:6px; border:1px solid #ddd }
+label{font-size:12px; color:var(--muted); display:block; margin-bottom:6px}
+.form-row{display:flex;gap:12px}
+.col{flex:1}
+.col.small{flex:0 0 100px}
+.actions{display:flex;align-items:center;gap:12px;margin-top:12px}
+.btn{background:var(--accent); color:#fff; border:none}
+.list{margin-top:12px}
+.part-row{display:flex;align-items:center;justify-content:space-between;padding:10px;border-top:1px solid #f0f0f0}
+.part-left{flex:1}
+.part-right img{height:48px}
+.desc{color:var(--muted);font-size:13px}
+.meta{font-size:12px;color:var(--muted);margin-top:6px}
+.barcode-box{min-width:200px;height:64px;display:flex;align-items:center;justify-content:center;border:1px dashed #eee;padding:6px;background:#fafafa;border-radius:6px}
+.locs{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+.loc-item{font-size:13px;color:#333;background:#f8f9fb;padding:6px;border-radius:6px;border:1px solid #f0f3f6}
+.loc-item.muted{color:var(--muted);background:transparent;border:none;padding:0}
+.btn.small{padding:6px 8px;font-size:13px}
+.btn.danger{background:#ff4d4f}
+.loc-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0}
+.loc-right{display:flex;gap:8px}
