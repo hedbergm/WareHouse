@@ -28,13 +28,22 @@ const loginBtn = document.getElementById('mobile-login');
 const loginScreen = document.getElementById('login-screen');
 const mainScreen = document.getElementById('main-screen');
 const locSelect = document.getElementById('loc-select');
-const startBtn = document.getElementById('start-scan');
+const scanLocBtn = document.getElementById('scan-loc');
+const scanPartBtn = document.getElementById('scan-part');
 const stopBtn = document.getElementById('stop-scan');
 const videoEl = document.getElementById('video');
 const scanStatus = document.getElementById('scan-status');
 const lastScan = document.getElementById('last-scan');
+const movementPanel = document.getElementById('movement-panel');
+const mvPart = document.getElementById('mv-part');
+const mvQty = document.getElementById('mv-qty');
+const mvAction = document.getElementById('mv-action');
+const mvSubmit = document.getElementById('mv-submit');
+const mvCancel = document.getElementById('mv-cancel');
+const mvMessage = document.getElementById('mv-message');
 
 let scanning = false;
+let scanMode = null; // 'loc' | 'part'
 let currentLoc = null;
 
 loginBtn.addEventListener('click', async () => {
@@ -56,92 +65,84 @@ async function loadLocations() {
   locSelect.innerHTML = '<option value="">Velg lokasjon</option>' + locs.map(l => `<option value="${l.barcode}">${l.name} (${l.barcode})</option>`).join('');
 }
 
-startBtn.addEventListener('click', () => {
-  if (scanning) return;
-  scanStatus.innerText = 'Starter kamera...';
+scanLocBtn.addEventListener('click', () => startScan('loc'));
+scanPartBtn.addEventListener('click', () => startScan('part'));
+stopBtn.addEventListener('click', () => stopCameraScanner());
+
+function startScan(mode){
+  if(scanning) return;
+  scanMode = mode;
+  scanStatus.innerText = mode === 'loc' ? 'Skanner lokasjon...' : 'Skanner del...';
   startCameraScanner();
-});
-stopBtn.addEventListener('click', () => {
-  stopCameraScanner();
-});
+}
 
-function startCameraScanner() {
+function startCameraScanner(){
   if (scanning) return;
-  // Check for browser support
   if (!(navigator && navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function')) {
-    scanStatus.innerText = 'Kamera ikke tilgjengelig i denne nettleseren eller krever HTTPS. Bruk Chrome/Edge og åpne via HTTPS eller localhost, eller bruk manuell registrering.';
+    scanStatus.innerText = 'Kamera ikke tilgjengelig / krever HTTPS.';
     return;
   }
-
   scanning = true;
+  stopBtn.disabled = false;
+  videoEl.textContent = '';
   Quagga.init({
-    inputStream: {
-      name: "Live",
-      type: "LiveStream",
-      target: videoEl,
-      constraints: { facingMode: "environment" }
-    },
-    decoder: { readers: ["code_128_reader","ean_reader","ean_8_reader"] }
-  }, function(err) {
-    if (err) { scanStatus.innerText = 'Feil ved oppstart: ' + (err.message || err); scanning = false; return; }
+    inputStream: { name:'Live', type:'LiveStream', target: videoEl, constraints:{ facingMode:'environment' } },
+    decoder: { readers:[ 'code_128_reader','ean_reader','ean_8_reader' ] }
+  }, err => {
+    if(err){ scanStatus.innerText = 'Feil ved oppstart: '+(err.message||err); scanning=false; stopBtn.disabled=true; return; }
     Quagga.start();
-    scanStatus.innerText = 'Skanner...';
+    scanStatus.innerText = scanMode === 'loc' ? 'Skann en lokasjon strekkode' : 'Skann en del strekkode';
   });
-
-  Quagga.onDetected(d => {
-    const code = d && d.codeResult && d.codeResult.code;
-    if (code) onBarcodeScanned(code);
+  Quagga.onDetected(det => {
+    const code = det && det.codeResult && det.codeResult.code;
+    if(code) handleScan(code);
   });
 }
 
-function stopCameraScanner() {
-  if (!scanning) return;
-  scanning = false;
-  Quagga.stop();
-  scanStatus.innerText = 'Stoppet';
+function stopCameraScanner(){
+  if(!scanning) return;
+  scanning=false; Quagga.stop(); scanStatus.innerText='Stoppet'; stopBtn.disabled=true; scanMode=null; if(!videoEl.hasChildNodes()) videoEl.textContent='Ingen aktiv skann';
 }
 
-async function onBarcodeScanned(code) {
+async function handleScan(code){
   stopCameraScanner();
-  lastScan.innerText = code;
-  const loc = locSelect.value;
-  // If scanned code looks like a location barcode, allow setting location
-  const pickLoc = confirm(`Skannet: ${code}. Er dette en lokasjon? (OK = Ja)`);
-  if (pickLoc) {
-    // find in options
-    const opt = Array.from(locSelect.options).find(o => o.value === code || o.text.includes(code));
-    if (opt) { locSelect.value = opt.value; alert('Valgt lokasjon: ' + opt.text); }
-    else { if (confirm('Lokasjon ikke funnet - vil du legge den til?')) {
-      const name = prompt('Navn for lokasjon', code) || code;
-      await api('/api/locations', 'POST', { name, barcode: code });
-      await loadLocations();
-      locSelect.value = code;
-    }}
+  lastScan.innerText = (scanMode==='loc'?'Lokasjon: ':'Del: ')+code;
+  if(scanMode==='loc'){
+    const opt = Array.from(locSelect.options).find(o=> o.value===code || o.text.includes(code));
+    if(opt){ locSelect.value=opt.value; scanStatus.innerText='Lokasjon valgt'; return; }
+    // create new location quickly
+    try { await api('/api/locations','POST',{ name: code, barcode: code }); await loadLocations(); locSelect.value=code; scanStatus.innerText='Lokasjon opprettet'; }
+    catch(e){ scanStatus.innerText='Feil lokasjon'; }
     return;
   }
-
-  // ellers spør om inn/ut og antall
-  const action = confirm('Vil du registrere UT? OK = UT, Avbryt = INN') ? 'out' : 'in';
-  const qty = parseInt(prompt('Antall', '1') || '1', 10);
-  if (!locSelect.value) return alert('Velg lokasjon først');
-  try {
-    await api('/api/stock/scan', 'POST', { location_barcode: locSelect.value, part_number: code, qty, action });
-    alert('Registrert ' + action + ' ' + qty + ' av ' + code);
-  } catch (e) {
-    alert('Feil: ' + JSON.stringify(e));
-  }
+  // part scan
+  if(!locSelect.value){ scanStatus.innerText='Velg / skann lokasjon først'; return; }
+  mvPart.value = code;
+  mvQty.value = 1;
+  mvAction.value = 'in';
+  movementPanel.classList.remove('hidden');
+  mvMessage.textContent = '';
 }
 
 // handle manual add
-document.getElementById('manual-add').addEventListener('click', async () => {
-  const pn = prompt('Delenummer') || '';
-  const action = confirm('UT? OK=UT, Avbryt=INN') ? 'out' : 'in';
-  const qty = parseInt(prompt('Antall','1')||'1',10);
-  if (!pn) return;
-  if (!locSelect.value) return alert('Velg lokasjon først');
+document.getElementById('manual-add').addEventListener('click', () => {
+  if(!locSelect.value){ alert('Velg lokasjon først'); return; }
+  const pn = prompt('Delenummer'); if(!pn) return;
+  mvPart.value = pn.trim();
+  mvQty.value = 1; mvAction.value='in'; movementPanel.classList.remove('hidden'); mvMessage.textContent='';
+});
+
+mvCancel.addEventListener('click', ()=> { movementPanel.classList.add('hidden'); });
+mvSubmit.addEventListener('click', async () => {
+  const part = mvPart.value.trim();
+  const qty = parseInt(mvQty.value||'0',10);
+  const action = mvAction.value;
+  if(!part || !qty || !locSelect.value){ mvMessage.textContent='Mangler felt'; return; }
+  mvSubmit.disabled=true;
   try {
-    await api('/api/stock/scan','POST',{ location_barcode: locSelect.value, part_number: pn, qty, action });
-    alert('Registrert');
-  } catch(e){ alert('Feil: '+JSON.stringify(e)); }
- });
+    await api('/api/stock/scan','POST',{ location_barcode: locSelect.value, part_number: part, qty, action });
+    mvMessage.textContent='Lagret'; movementPanel.classList.add('hidden');
+  } catch(e){ mvMessage.textContent='Feil: '+ (e.error||''); }
+  finally { mvSubmit.disabled=false; }
+});
 
