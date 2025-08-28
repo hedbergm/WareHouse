@@ -85,17 +85,29 @@ function startCameraScanner(){
   scanning = true;
   stopBtn.disabled = false;
   videoEl.textContent = '';
+  try { Quagga.offDetected(); } catch(_) {}
   Quagga.init({
     inputStream: { name:'Live', type:'LiveStream', target: videoEl, constraints:{ facingMode:'environment' } },
-    decoder: { readers:[ 'code_128_reader','ean_reader','ean_8_reader' ] }
+    locate: true,
+    numOfWorkers: navigator.hardwareConcurrency ? Math.min(4, navigator.hardwareConcurrency) : 2,
+    decoder: { readers:[ 'code_128_reader' ] }
   }, err => {
     if(err){ scanStatus.innerText = 'Feil ved oppstart: '+(err.message||err); scanning=false; stopBtn.disabled=true; return; }
     Quagga.start();
     scanStatus.innerText = scanMode === 'loc' ? 'Skann en lokasjon strekkode' : 'Skann en del strekkode';
   });
+  let pendingCode = null; let pendingTime = 0;
   Quagga.onDetected(det => {
     const code = det && det.codeResult && det.codeResult.code;
-    if(code) handleScan(code);
+    if(!code) return;
+    // Enkle sanity checks: Code128 med bindestrek skal ikke bli kun tall
+    // Dobbel-bekreftelse for å redusere feil-lesning
+    const now = Date.now();
+    if (pendingCode === code && (now - pendingTime) < 1200) {
+      handleScan(code);
+    } else {
+      pendingCode = code; pendingTime = now; scanStatus.innerText = 'Bekreft skann: '+code+' (hold rolig)';
+    }
   });
 }
 

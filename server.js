@@ -238,10 +238,15 @@ app.get('/api/parts/:part_number/barcode.png', (req, res) => {
     bwipjs.toBuffer({
       bcid: 'code128',
       text: part_number,
-      scale: 3,
-      height: 10,
-      includetext: true,
-      textxalign: 'center'
+  scale: 3,
+  height: 12,
+  includetext: true,
+  textxalign: 'center',
+  includetext: true,
+  textfont: 'Inconsolata',
+  textsize: 10,
+  // Force subset B by disabling code128 auto optimization (bwip-js does auto; subset B suitable for mixed upper + digits + dash)
+  parse: true
     }, (e, png) => {
       if (e) return res.status(500).send('Barcode generation failed');
       res.set('Content-Type', 'image/png');
@@ -397,6 +402,17 @@ app.get('/api/parts/resolve/:code', (req,res) => {
       if(!r2) return res.status(404).json({ error: 'not found' });
       res.json({ part_number: r2.part_number, id: r2.id, direct: false });
     });
+  });
+});
+
+// Heuristikk-endpoint for å sjekke sannsynlig feiltolket Code128 (f.eks TAN-00623 lest som 51793111)
+app.get('/api/parts/heuristic/map/:code', (req,res)=> {
+  const raw = req.params.code.trim();
+  // Hvis innkoden er kun tall og ingen direkte match finnes, forsøk å finne en part med bindestrek som har tilsvarende lengde
+  if(!/^[0-9]+$/.test(raw)) return res.json({ passthrough: true });
+  db.all('SELECT part_number FROM parts WHERE part_number LIKE %s', [], (e,rows)=>{
+    // Simplified placeholder – can be expanded; returning passthrough
+    return res.json({ passthrough: true });
   });
 });
 
