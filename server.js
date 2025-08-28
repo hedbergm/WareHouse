@@ -13,11 +13,12 @@ console.log('[DB MODE]', usePg ? 'Postgres' : 'SQLite');
 if (usePg) {
   (async () => {
     try {
-      const ddl = `CREATE TABLE IF NOT EXISTS parts( id SERIAL PRIMARY KEY, part_number TEXT UNIQUE NOT NULL, description TEXT, min_qty INTEGER DEFAULT 0 );
+  const ddl = `CREATE TABLE IF NOT EXISTS parts( id SERIAL PRIMARY KEY, part_number TEXT UNIQUE NOT NULL, description TEXT, min_qty INTEGER DEFAULT 0 );
 CREATE TABLE IF NOT EXISTS locations( id SERIAL PRIMARY KEY, name TEXT NOT NULL, barcode TEXT UNIQUE NOT NULL );
 CREATE TABLE IF NOT EXISTS stock( id SERIAL PRIMARY KEY, part_id INTEGER NOT NULL REFERENCES parts(id) ON DELETE CASCADE, location_id INTEGER NOT NULL REFERENCES locations(id) ON DELETE CASCADE, qty INTEGER NOT NULL DEFAULT 0, UNIQUE(part_id, location_id) );
 CREATE TABLE IF NOT EXISTS transactions( id SERIAL PRIMARY KEY, part_id INTEGER NOT NULL REFERENCES parts(id), location_id INTEGER NOT NULL REFERENCES locations(id), qty INTEGER NOT NULL, action TEXT NOT NULL, created_at TIMESTAMP DEFAULT NOW() );
-CREATE TABLE IF NOT EXISTS users( id SERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL );`;
+CREATE TABLE IF NOT EXISTS users( id SERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL );
+CREATE TABLE IF NOT EXISTS part_barcodes( id SERIAL PRIMARY KEY, part_id INTEGER NOT NULL REFERENCES parts(id) ON DELETE CASCADE, barcode TEXT UNIQUE NOT NULL );`;
       for (const stmt of ddl.split(/;\s*/)) { if (stmt.trim()) await pgdb.run(stmt); }
       console.log('[PG] Schema ensured at startup');
     } catch (e) {
@@ -356,6 +357,53 @@ app.get('/api/stock/:part_number', async (req, res) => {
     if (err) return res.status(500).json({ error: err.message });
     const total = await getTotalQty(part.id);
     res.json({ part, total, locations: rows });
+  });
+});
+
+// Resolve a skannet strekkode til part_number (sjekker parts.part_number først, deretter alias i part_barcodes)
+app.get('/api/parts/resolve/:code', (req,res) => {
+  const code = req.params.code.trim();
+  if(!code) return res.status(400).json({ error: 'code required' });
+  // First try direct match
+  db.get(`SELECT * FROM parts WHERE part_number = ${qMarks([code])[0]}`, [code], (e,row) => {
+    if(e) return res.status(500).json({ error: e.message });
+    if(row) return res.json({ part_number: row.part_number, id: row.id, direct: true });
+    // try alias
+    const sql = `SELECT p.id, p.part_number FROM part_barcodes pb JOIN parts p ON pb.part_id = p.id WHERE pb.barcode = ${qMarks([code])[0]}`;
+    db.get(sql, [code], (e2,r2) => {
+      if(e2) return res.status(500).json({ error: e2.message });
+      if(!r2) return res.status(404).json({ error: 'not found' });
+      res.json({ part_number: r2.part_number, id: r2.id, direct: false });
+    });
+  });
+});
+
+// Legg til alias strekkode for del
+app.post('/api/parts/:id/barcodes', (req,res) => {
+  const id = req.params.id; const { barcode } = req.body || {};
+  if(!barcode) return res.status(400).json({ error: 'barcode required' });
+  const sql = `INSERT INTO part_barcodes (part_id, barcode) VALUES (${qMarks([id, barcode]).join(', ')})`;
+  db.run(sql, [id, barcode], function(err){
+    if(err) return res.status(500).json({ error: err.message });
+    res.json({ id: this.lastID, part_id: id, barcode });
+  });
+});
+
+// List alias strekkoder for del
+app.get('/api/parts/:id/barcodes', (req,res) => {
+  const id = req.params.id;
+  db.all(`SELECT * FROM part_barcodes WHERE part_id = ${qMarks([id])[0]}`, [id], (e, rows) => {
+    if(e) return res.status(500).json({ error: e.message });
+    res.json(rows);
+  });
+});
+
+// Slett alias
+app.delete('/api/parts/:id/barcodes/:bid', (req,res) => {
+  const bid = req.params.bid;
+  db.run(`DELETE FROM part_barcodes WHERE id = ${qMarks([bid])[0]}`, [bid], function(err){
+    if(err) return res.status(500).json({ error: err.message });
+    res.json({ ok: true });
   });
 });
 

@@ -48,6 +48,13 @@ db.serialize(() => {
     username TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL
   )`);
+
+  // Optional: ekstra strekkoder (alias) for en del
+  db.run(`CREATE TABLE IF NOT EXISTS part_barcodes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    part_id INTEGER NOT NULL REFERENCES parts(id) ON DELETE CASCADE,
+    barcode TEXT UNIQUE NOT NULL
+  )`);
 });
 
 module.exports = db;
