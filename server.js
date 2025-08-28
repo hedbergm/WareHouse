@@ -65,7 +65,13 @@ app.get('/api/mobile/validate', (req, res) => {
 app.post('/api/mobile/login', (req, res) => {
   const { username, password } = req.body || {};
   // Fallback: allow simple password-only auth via MOBILE_PASS (optional)
-  if (process.env.MOBILE_PASS && password === process.env.MOBILE_PASS) {
+  if (process.env.MOBILE_USER && process.env.MOBILE_PASS) {
+    if (username === process.env.MOBILE_USER && password === process.env.MOBILE_PASS) {
+      const token = Buffer.from(`${username}:${password}`).toString('base64');
+      return res.json({ ok: true, token, username, mode: 'env-user-pass' });
+    }
+  } else if (process.env.MOBILE_PASS && password === process.env.MOBILE_PASS) {
+    // Legacy behaviour if only MOBILE_PASS is set (any username accepted)
     const user = username && username.trim() ? username.trim() : 'mobile';
     const token = Buffer.from(`${user}:${password}`).toString('base64');
     return res.json({ ok: true, token, username: user, mode: 'env-pass' });
