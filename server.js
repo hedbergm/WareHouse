@@ -133,7 +133,9 @@ app.post('/api/locations', (req, res) => {
   if (!name || !barcode) return res.status(400).json({ error: 'name and barcode required' });
   db.run('INSERT INTO locations (name, barcode) VALUES (?, ?)', [name, barcode], function(err) {
     if (err) return res.status(500).json({ error: err.message });
-    res.json({ id: this.lastID, name, barcode });
+  const created = { id: this.lastID, name, barcode };
+  console.log('[ADD LOCATION]', created);
+  res.json(created);
   });
 });
 
@@ -220,7 +222,9 @@ app.post('/api/parts', (req, res) => {
   const minq = parseInt(min_qty || '0', 10);
   db.run('INSERT INTO parts (part_number, description, min_qty) VALUES (?, ?, ?)', [part_number, description || '', minq], function(err) {
     if (err) return res.status(500).json({ error: err.message });
-    res.json({ id: this.lastID, part_number, description, min_qty: minq });
+  const created = { id: this.lastID, part_number, description, min_qty: minq };
+  console.log('[ADD PART]', created);
+  res.json(created);
   });
 });
 
@@ -283,24 +287,37 @@ app.post('/api/stock/scan', async (req, res) => {
           db.run(`UPDATE stock SET qty = qty - ? WHERE part_id = ? AND location_id = ?`, [q, part.id, loc.id]);
 
           // After update check total
-          const total = await getTotalQty(part.id);
-          const newTotal = total - q; // because getTotalQty was read before update in this branch
-          if (newTotal < part.min_qty) {
-            sendAlertEmail(part, newTotal);
+          const totalAfter = await getTotalQty(part.id); // already updated
+          if (totalAfter < part.min_qty) {
+            sendAlertEmail(part, totalAfter);
           }
         });
       }
 
       // Log transaction
       db.run(`INSERT INTO transactions (part_id, location_id, qty, action) VALUES (?, ?, ?, ?)`, [part.id, loc.id, q, action]);
-
-      res.json({ ok: true });
+      console.log('[STOCK SCAN]', { part: part.part_number, location: loc.barcode, action, qty: q });
+      res.json({ ok: true, part: part.part_number, location: loc.barcode, qty: q, action });
     });
 
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'server error' });
   }
+});
+
+// Debug endpoints (non-authenticated; consider protecting for production)
+app.get('/api/debug/parts', (req,res) => {
+  db.all('SELECT * FROM parts', (e, rows) => {
+    if (e) return res.status(500).json({ error: e.message });
+    res.json(rows);
+  });
+});
+app.get('/api/debug/locations', (req,res) => {
+  db.all('SELECT * FROM locations', (e, rows) => {
+    if (e) return res.status(500).json({ error: e.message });
+    res.json(rows);
+  });
 });
 
 // Get stock for a part
