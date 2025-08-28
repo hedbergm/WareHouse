@@ -151,16 +151,27 @@ function getLocationByBarcode(barcode) { return new Promise((res,rej)=> db.get(`
 function getTotalQty(part_id) { return new Promise((res,rej)=> db.get(`SELECT SUM(qty) as total FROM stock WHERE part_id = ${qMarks([''])[0]}`, [part_id], (e,r)=> e?rej(e):res(r? r.total:0))); }
 
 // API
-app.post('/api/locations', (req, res) => {
-  const { name, barcode } = req.body;
+app.post('/api/locations', async (req, res) => {
+  const { name, barcode } = req.body || {};
   if (!name || !barcode) return res.status(400).json({ error: 'name and barcode required' });
-  const sql = `INSERT INTO locations (name, barcode) VALUES (${qMarks([name,barcode]).join(', ')})`;
-  db.run(sql, [name, barcode], function(err) {
-    if (err) return res.status(500).json({ error: err.message });
-  const created = { id: this.lastID, name, barcode };
-  console.log('[ADD LOCATION]', created);
-  res.json(created);
-  });
+  try {
+    if (usePg) {
+      const row = await pgdb.get('INSERT INTO locations (name, barcode) VALUES ($1,$2) RETURNING id', [name, barcode]);
+      const created = { id: row.id, name, barcode };
+      console.log('[ADD LOCATION]', created);
+      return res.json(created);
+    } else {
+      const sql = `INSERT INTO locations (name, barcode) VALUES (${qMarks([name,barcode]).join(', ')})`;
+      db.run(sql, [name, barcode], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        const created = { id: this.lastID, name, barcode };
+        console.log('[ADD LOCATION]', created);
+        res.json(created);
+      });
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.get('/api/locations', (req, res) => {
@@ -241,18 +252,29 @@ app.get('/api/parts/:part_number/barcode.png', (req, res) => {
   }
 });
 
-app.post('/api/parts', (req, res) => {
-  let { part_number, description, min_qty } = req.body;
-  if (!part_number) return res.status(400).json({ error: 'part_number required' });
-  part_number = String(part_number).trim();
-  const minq = parseInt(min_qty || '0', 10);
-  const sql = `INSERT INTO parts (part_number, description, min_qty) VALUES (${qMarks([part_number, description || '', minq]).join(', ')})`;
-  db.run(sql, [part_number, description || '', minq], function(err) {
-    if (err) return res.status(500).json({ error: err.message });
-    const created = { id: this.lastID, part_number, description, min_qty: minq };
-    console.log('[ADD PART]', created);
-    res.json(created);
-  });
+app.post('/api/parts', async (req, res) => {
+  try {
+    let { part_number, description, min_qty } = req.body || {};
+    if (!part_number) return res.status(400).json({ error: 'part_number required' });
+    part_number = String(part_number).trim();
+    const minq = parseInt(min_qty || '0', 10);
+    if (usePg) {
+      const row = await pgdb.get('INSERT INTO parts (part_number, description, min_qty) VALUES ($1,$2,$3) RETURNING id', [part_number, description || '', minq]);
+      const created = { id: row.id, part_number, description, min_qty: minq };
+      console.log('[ADD PART]', created);
+      return res.json(created);
+    } else {
+      const sql = `INSERT INTO parts (part_number, description, min_qty) VALUES (${qMarks([part_number, description || '', minq]).join(', ')})`;
+      db.run(sql, [part_number, description || '', minq], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        const created = { id: this.lastID, part_number, description, min_qty: minq };
+        console.log('[ADD PART]', created);
+        res.json(created);
+      });
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.get('/api/parts', (req, res) => {
@@ -404,6 +426,24 @@ app.delete('/api/parts/:id/barcodes/:bid', (req,res) => {
   db.run(`DELETE FROM part_barcodes WHERE id = ${qMarks([bid])[0]}`, [bid], function(err){
     if(err) return res.status(500).json({ error: err.message });
     res.json({ ok: true });
+  });
+});
+
+// Debug status: counts + db mode
+app.get('/api/debug/status', (req,res) => {
+  const status = { dbMode: usePg ? 'Postgres' : 'SQLite' };
+  const queries = [
+    ['parts','SELECT COUNT(*) as c FROM parts'],
+    ['locations','SELECT COUNT(*) as c FROM locations'],
+    ['stock','SELECT COUNT(*) as c FROM stock'],
+    ['transactions','SELECT COUNT(*) as c FROM transactions']
+  ];
+  let remaining = queries.length;
+  queries.forEach(([key, sql]) => {
+    db.get(sql, [], (e,row)=>{
+      status[key] = e ? 'err' : row.c;
+      if(--remaining===0) res.json(status);
+    });
   });
 });
 
