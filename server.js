@@ -224,15 +224,16 @@ app.get('/api/parts/:part_number/barcode.png', (req, res) => {
 });
 
 app.post('/api/parts', (req, res) => {
-  const { part_number, description, min_qty } = req.body;
+  let { part_number, description, min_qty } = req.body;
   if (!part_number) return res.status(400).json({ error: 'part_number required' });
+  part_number = String(part_number).trim();
   const minq = parseInt(min_qty || '0', 10);
   const sql = `INSERT INTO parts (part_number, description, min_qty) VALUES (${qMarks([part_number, description || '', minq]).join(', ')})`;
   db.run(sql, [part_number, description || '', minq], function(err) {
     if (err) return res.status(500).json({ error: err.message });
-  const created = { id: this.lastID, part_number, description, min_qty: minq };
-  console.log('[ADD PART]', created);
-  res.json(created);
+    const created = { id: this.lastID, part_number, description, min_qty: minq };
+    console.log('[ADD PART]', created);
+    res.json(created);
   });
 });
 
