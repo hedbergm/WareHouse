@@ -9,10 +9,12 @@ const db = require('./db');
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
-app.use(express.static('public'));
 
-// Root redirect to portal home
-app.get('/', (req,res)=> res.redirect('/home.html'));
+// Root should show home.html (not index.html)
+app.get('/', (req,res)=> res.sendFile(require('path').join(__dirname,'public','home.html')));
+
+// Static files without automatic index so our custom '/' works
+app.use(express.static('public', { index: false }));
 
 const PORT = process.env.PORT || 3000; // ngrok fjernet
 
