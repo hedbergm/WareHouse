@@ -5,56 +5,44 @@
   <title>WareHouse Portal</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <link rel="stylesheet" href="/styles.css">
-  <style>
-    body { max-width:980px;margin:0 auto;padding:24px; }
-    header { display:flex;flex-wrap:wrap;align-items:center;gap:16px; }
-    nav { display:flex;flex-wrap:wrap;gap:12px;margin-top:12px; }
-    .app-card { border:1px solid #e2e2e2;border-radius:12px;padding:18px 20px;flex:1 1 260px;min-width:240px;background:#fff;display:flex;flex-direction:column;gap:10px;box-shadow:0 2px 4px rgba(0,0,0,.04);position:relative; }
-    .app-card h3 { margin:0;font-size:1.1rem; }
-    .badge { background:#0d6efd;color:#fff;font-size:11px;padding:2px 6px;border-radius:12px;letter-spacing:.5px; }
-    .soon { background:#ff9800; }
-    .grid { display:flex;flex-wrap:wrap;gap:18px;margin-top:24px; }
-    a.card-link { text-decoration:none;color:inherit; }
-    .app-card:hover { border-color:#bbb;box-shadow:0 3px 10px rgba(0,0,0,.08); }
-    footer { margin-top:60px;font-size:12px;color:#666;text-align:center; }
-  </style>
+  <style>body{max-width:1080px;margin:0 auto}</style>
 </head>
 <body>
-  <header>
+  <header class="portal-header">
     <div>
-      <h1 style="margin:0;font-size:1.9rem">WareHouse</h1>
-      <div style="color:#555;margin-top:4px">Intern logistikk & lagerplattform</div>
+      <h1>WareHouse</h1>
+      <div class="tagline">Intern logistikk & lagerplattform</div>
     </div>
   </header>
 
-  <nav>
-    <a href="/home.html" style="font-weight:600">Hjem</a>
+  <nav class="portal-nav">
+    <a href="/home.html" class="active">Hjem</a>
     <a href="/index.html">Part Store</a>
-    <a style="opacity:.5;pointer-events:none">Asset Tracking (kommer)</a>
-    <a style="opacity:.5;pointer-events:none">Verktøyadministrasjon (kommer)</a>
+    <a class="muted-link" style="opacity:.55;pointer-events:none">Asset Tracking (kommer)</a>
+    <a class="muted-link" style="opacity:.55;pointer-events:none">Verktøyadministrasjon (kommer)</a>
   </nav>
 
-  <section class="grid">
+  <section class="card-grid">
     <a class="card-link" href="/index.html">
       <div class="app-card">
         <h3>Part Store <span class="badge">Aktiv</span></h3>
         <p>Registrer lokasjoner, deler, beholdning og få varsler på lavt lager. Mobil skanning inkludert.</p>
-        <div style="margin-top:auto;font-size:12px;color:#0d6efd;font-weight:600">Åpne →</div>
+        <div class="card-footer">Åpne →</div>
       </div>
     </a>
-    <div class="app-card" aria-disabled="true">
+    <div class="app-card card-disabled" aria-disabled="true">
       <h3>Asset Tracking <span class="badge soon">Planlagt</span></h3>
       <p>Sporing av utstyr og maskiner på tvers av lokasjoner med historikk og status.</p>
-      <div style="margin-top:auto;font-size:12px;color:#999">Kommer senere</div>
+      <div class="card-footer" style="color:#777">Kommer senere</div>
     </div>
-    <div class="app-card" aria-disabled="true">
+    <div class="app-card card-disabled" aria-disabled="true">
       <h3>Verktøyadministrasjon <span class="badge soon">Planlagt</span></h3>
       <p>Utlån og retur av verktøy, serviceintervaller og varsler.</p>
-      <div style="margin-top:auto;font-size:12px;color:#999">Kommer senere</div>
+      <div class="card-footer" style="color:#777">Kommer senere</div>
     </div>
   </section>
 
-  <footer>
+  <footer class="site">
     WareHouse © 2025 – Internt system. Flere moduler aktiveres fortløpende.
   </footer>
 </body>
