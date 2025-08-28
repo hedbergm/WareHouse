@@ -4,7 +4,27 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const bwipjs = require('bwip-js');
 const nodemailer = require('nodemailer');
-const db = require('./db');
+const dbSqlite = require('./db');
+const pgdb = require('./pgdb');
+const usePg = pgdb.enabled();
+console.log('[DB MODE]', usePg ? 'Postgres' : 'SQLite');
+
+// Unified DB helper interface
+const db = {
+  run(sql, params, cb){
+    if(!usePg) return dbSqlite.run(sql, params, cb);
+    pgdb.run(sql, params).then(r=> cb && cb(null, r)).catch(e=> cb && cb(e));
+  },
+  get(sql, params, cb){
+    if(!usePg) return dbSqlite.get(sql, params, cb);
+    pgdb.get(sql, params).then(r=> cb && cb(null, r)).catch(e=> cb && cb(e));
+  },
+  all(sql, params, cb){
+    if(!usePg) return dbSqlite.all(sql, params, cb);
+    pgdb.all(sql, params).then(r=> cb && cb(null, r)).catch(e=> cb && cb(e));
+  },
+  serialize(fn){ if(!usePg) return dbSqlite.serialize(fn); fn(); }
+};
 
 const app = express();
 app.use(cors());
@@ -100,38 +120,18 @@ function sendAlertEmail(part, totalQty) {
 }
 
 // Helpers
-function getPartByNumber(part_number) {
-  return new Promise((resolve, reject) => {
-    db.get('SELECT * FROM parts WHERE part_number = ?', [part_number], (err, row) => {
-      if (err) return reject(err);
-      resolve(row);
-    });
-  });
-}
+function qMarks(params){ return usePg ? params.map((_,i)=>'$'+(i+1)) : params.map(()=>'?'); }
 
-function getLocationByBarcode(barcode) {
-  return new Promise((resolve, reject) => {
-    db.get('SELECT * FROM locations WHERE barcode = ?', [barcode], (err, row) => {
-      if (err) return reject(err);
-      resolve(row);
-    });
-  });
-}
-
-function getTotalQty(part_id) {
-  return new Promise((resolve, reject) => {
-    db.get('SELECT SUM(qty) as total FROM stock WHERE part_id = ?', [part_id], (err, row) => {
-      if (err) return reject(err);
-      resolve(row && row.total ? row.total : 0);
-    });
-  });
-}
+function getPartByNumber(part_number) { return new Promise((res,rej)=> db.get(`SELECT * FROM parts WHERE part_number = ${qMarks([''])[0]}`, [part_number], (e,r)=> e?rej(e):res(r))); }
+function getLocationByBarcode(barcode) { return new Promise((res,rej)=> db.get(`SELECT * FROM locations WHERE barcode = ${qMarks([''])[0]}`, [barcode], (e,r)=> e?rej(e):res(r))); }
+function getTotalQty(part_id) { return new Promise((res,rej)=> db.get(`SELECT SUM(qty) as total FROM stock WHERE part_id = ${qMarks([''])[0]}`, [part_id], (e,r)=> e?rej(e):res(r? r.total:0))); }
 
 // API
 app.post('/api/locations', (req, res) => {
   const { name, barcode } = req.body;
   if (!name || !barcode) return res.status(400).json({ error: 'name and barcode required' });
-  db.run('INSERT INTO locations (name, barcode) VALUES (?, ?)', [name, barcode], function(err) {
+  const sql = `INSERT INTO locations (name, barcode) VALUES (${qMarks([name,barcode]).join(', ')})`;
+  db.run(sql, [name, barcode], function(err) {
     if (err) return res.status(500).json({ error: err.message });
   const created = { id: this.lastID, name, barcode };
   console.log('[ADD LOCATION]', created);
@@ -140,7 +140,7 @@ app.post('/api/locations', (req, res) => {
 });
 
 app.get('/api/locations', (req, res) => {
-  db.all('SELECT * FROM locations', (err, rows) => {
+  db.all('SELECT * FROM locations', [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows);
   });
@@ -151,7 +151,8 @@ app.put('/api/locations/:id', (req, res) => {
   const id = req.params.id;
   const { name, barcode } = req.body;
   if (!name || !barcode) return res.status(400).json({ error: 'name and barcode required' });
-  db.run('UPDATE locations SET name = ?, barcode = ? WHERE id = ?', [name, barcode, id], function(err) {
+  const sql = `UPDATE locations SET name = ${qMarks([name])[0]}, barcode = ${qMarks([barcode])[0]} WHERE id = ${qMarks([id])[0]}`;
+  db.run(sql, [name, barcode, id], function(err) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ id, name, barcode });
   });
@@ -161,9 +162,9 @@ app.put('/api/locations/:id', (req, res) => {
 app.delete('/api/locations/:id', (req, res) => {
   const id = req.params.id;
   db.serialize(() => {
-    db.run('DELETE FROM transactions WHERE location_id = ?', [id]);
-    db.run('DELETE FROM stock WHERE location_id = ?', [id]);
-    db.run('DELETE FROM locations WHERE id = ?', [id], function(err) {
+  db.run(`DELETE FROM transactions WHERE location_id = ${qMarks([id])[0]}`, [id]);
+  db.run(`DELETE FROM stock WHERE location_id = ${qMarks([id])[0]}`, [id]);
+  db.run(`DELETE FROM locations WHERE id = ${qMarks([id])[0]}`, [id], function(err) {
       if (err) return res.status(500).json({ error: err.message });
       res.json({ ok: true });
     });
@@ -172,7 +173,7 @@ app.delete('/api/locations/:id', (req, res) => {
 
 app.get('/api/locations/:id/barcode.png', (req, res) => {
   const id = req.params.id;
-  db.get('SELECT * FROM locations WHERE id = ?', [id], (err, loc) => {
+  db.get(`SELECT * FROM locations WHERE id = ${qMarks([id])[0]}`, [id], (err, loc) => {
     if (err || !loc) return res.status(404).send('Not found');
     // Generate Code128 barcode image
     try {
@@ -220,7 +221,8 @@ app.post('/api/parts', (req, res) => {
   const { part_number, description, min_qty } = req.body;
   if (!part_number) return res.status(400).json({ error: 'part_number required' });
   const minq = parseInt(min_qty || '0', 10);
-  db.run('INSERT INTO parts (part_number, description, min_qty) VALUES (?, ?, ?)', [part_number, description || '', minq], function(err) {
+  const sql = `INSERT INTO parts (part_number, description, min_qty) VALUES (${qMarks([part_number, description || '', minq]).join(', ')})`;
+  db.run(sql, [part_number, description || '', minq], function(err) {
     if (err) return res.status(500).json({ error: err.message });
   const created = { id: this.lastID, part_number, description, min_qty: minq };
   console.log('[ADD PART]', created);
@@ -229,7 +231,7 @@ app.post('/api/parts', (req, res) => {
 });
 
 app.get('/api/parts', (req, res) => {
-  db.all('SELECT * FROM parts', (err, rows) => {
+  db.all('SELECT * FROM parts', [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows);
   });
@@ -241,7 +243,8 @@ app.put('/api/parts/:id', (req, res) => {
   const { part_number, description, min_qty } = req.body;
   if (!part_number) return res.status(400).json({ error: 'part_number required' });
   const minq = parseInt(min_qty || '0', 10);
-  db.run('UPDATE parts SET part_number = ?, description = ?, min_qty = ? WHERE id = ?', [part_number, description || '', minq, id], function(err) {
+  const sql = `UPDATE parts SET part_number = ${qMarks([part_number])[0]}, description = ${qMarks([description || ''])[0]}, min_qty = ${qMarks([minq])[0]} WHERE id = ${qMarks([id])[0]}`;
+  db.run(sql, [part_number, description || '', minq, id], function(err) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ id, part_number, description, min_qty: minq });
   });
@@ -251,8 +254,8 @@ app.put('/api/parts/:id', (req, res) => {
 app.delete('/api/parts/:id', (req, res) => {
   const id = req.params.id;
   db.serialize(() => {
-    db.run('DELETE FROM transactions WHERE part_id = ?', [id]);
-    db.run('DELETE FROM parts WHERE id = ?', [id], function(err) {
+  db.run(`DELETE FROM transactions WHERE part_id = ${qMarks([id])[0]}`, [id]);
+  db.run(`DELETE FROM parts WHERE id = ${qMarks([id])[0]}`, [id], function(err) {
       if (err) return res.status(500).json({ error: err.message });
       res.json({ ok: true });
     });
@@ -275,16 +278,16 @@ app.post('/api/stock/scan', async (req, res) => {
 
     db.serialize(async () => {
       // Ensure stock row exists
-      db.run(`INSERT OR IGNORE INTO stock (part_id, location_id, qty) VALUES (?, ?, 0)`, [part.id, loc.id]);
+  db.run(usePg? `INSERT INTO stock (part_id, location_id, qty) VALUES (${qMarks([0,0,0]).join(', ')}) ON CONFLICT (part_id, location_id) DO NOTHING` : `INSERT OR IGNORE INTO stock (part_id, location_id, qty) VALUES (?, ?, 0)`, [part.id, loc.id]);
 
       if (action === 'in') {
-        db.run(`UPDATE stock SET qty = qty + ? WHERE part_id = ? AND location_id = ?`, [q, part.id, loc.id]);
+  db.run(`UPDATE stock SET qty = qty + ${qMarks([q])[0]} WHERE part_id = ${qMarks([part.id])[0]} AND location_id = ${qMarks([loc.id])[0]}`, [q, part.id, loc.id]);
       } else {
         // Check available at location
-        db.get('SELECT qty FROM stock WHERE part_id = ? AND location_id = ?', [part.id, loc.id], async (err, row) => {
+  db.get(`SELECT qty FROM stock WHERE part_id = ${qMarks([part.id])[0]} AND location_id = ${qMarks([loc.id])[0]}`, [part.id, loc.id], async (err, row) => {
           const available = row ? row.qty : 0;
           if (available < q) return res.status(400).json({ error: `Not enough stock at location (available ${available})` });
-          db.run(`UPDATE stock SET qty = qty - ? WHERE part_id = ? AND location_id = ?`, [q, part.id, loc.id]);
+          db.run(`UPDATE stock SET qty = qty - ${qMarks([q])[0]} WHERE part_id = ${qMarks([part.id])[0]} AND location_id = ${qMarks([loc.id])[0]}`, [q, part.id, loc.id]);
 
           // After update check total
           const totalAfter = await getTotalQty(part.id); // already updated
@@ -295,7 +298,7 @@ app.post('/api/stock/scan', async (req, res) => {
       }
 
       // Log transaction
-      db.run(`INSERT INTO transactions (part_id, location_id, qty, action) VALUES (?, ?, ?, ?)`, [part.id, loc.id, q, action]);
+  db.run(`INSERT INTO transactions (part_id, location_id, qty, action) VALUES (${qMarks([part.id, loc.id, q, action]).join(', ')})`, [part.id, loc.id, q, action]);
       console.log('[STOCK SCAN]', { part: part.part_number, location: loc.barcode, action, qty: q });
       res.json({ ok: true, part: part.part_number, location: loc.barcode, qty: q, action });
     });
@@ -325,7 +328,7 @@ app.get('/api/stock/:part_number', async (req, res) => {
   const part_number = req.params.part_number;
   const part = await getPartByNumber(part_number);
   if (!part) return res.status(404).json({ error: 'part not found' });
-  db.all(`SELECT l.id as location_id, l.name as location_name, l.barcode, s.qty FROM stock s JOIN locations l ON s.location_id = l.id WHERE s.part_id = ?`, [part.id], async (err, rows) => {
+  db.all(`SELECT l.id as location_id, l.name as location_name, l.barcode, s.qty FROM stock s JOIN locations l ON s.location_id = l.id WHERE s.part_id = ${qMarks([part.id])[0]}`, [part.id], async (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     const total = await getTotalQty(part.id);
     res.json({ part, total, locations: rows });
