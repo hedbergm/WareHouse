@@ -42,6 +42,7 @@
         <button id="manual-add" class="btn">Manuell del</button>
         <button id="stop-scan" class="btn" disabled>Stopp</button>
   <button id="test-camera" class="btn" type="button">Test kamera</button>
+  <button id="photo-scan" class="btn" type="button">Foto-scan</button>
       </div>
 
       <div id="scanner-area" style="margin-top:10px">
@@ -91,6 +92,7 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+  <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none" />
   <script src="/mobile.js"></script>
 </body>
 </html>

@@ -46,6 +46,8 @@ const mvMessage = document.getElementById('mv-message');
 const debugBtn = document.getElementById('toggle-debug');
 const debugLog = document.getElementById('debug-log');
 const testCamBtn = document.getElementById('test-camera');
+const photoBtn = document.getElementById('photo-scan');
+const photoInput = document.getElementById('photo-input');
 
 function dlog(msg){
   if(!debugLog) return; const ts = new Date().toISOString().substr(11,8);
@@ -70,6 +72,25 @@ if(testCamBtn){
       videoEl.innerHTML=''; const v=document.createElement('video'); v.autoplay=true; v.playsInline=true; v.srcObject=stream; videoEl.appendChild(v); scanStatus.textContent='Testkamera aktiv (ingen scanning).';
       setTimeout(()=>{ track.stop(); dlog('Testkamera stoppet'); if(v.parentNode) v.parentNode.removeChild(v); videoEl.textContent='Ingen aktiv skann'; }, 8000);
     } catch(e){ dlog('Testkamera feil: '+e.message); scanStatus.textContent='Kamera tilgang feilet: '+e.message; }
+  });
+}
+
+if(photoBtn && photoInput){
+  photoBtn.addEventListener('click', ()=> {
+    photoInput.click();
+  });
+  photoInput.addEventListener('change', async () => {
+    if(!photoInput.files || !photoInput.files[0]) return;
+    const file = photoInput.files[0];
+    dlog('Foto valgt: '+file.name+' ('+file.type+')');
+    // Midlertidig løsning: vis forhåndsvisning og be bruker taste inn resultat til vi evt. implementerer offline dekoding.
+    const reader = new FileReader();
+    reader.onload = () => {
+      videoEl.innerHTML = '<img src="'+reader.result+'" style="max-width:100%;border-radius:8px">';
+      const guess = prompt('Skriv inn strekkoden lest fra bildet (midlertidig)');
+      if(guess){ handleScan(guess.trim()); }
+    };
+    reader.readAsDataURL(file);
   });
 }
 
@@ -115,6 +136,7 @@ function startCameraScanner(){
   if (!(navigator && navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function')) {
     scanStatus.innerText = 'Kamera ikke tilgjengelig / krever HTTPS.';
     dlog('getUserMedia ikke tilgjengelig');
+  scanStatus.innerHTML += '<br>Bruk Foto-scan knappen som fallback.';
     return;
   }
   // Permission preflight
