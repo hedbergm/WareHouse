@@ -63,9 +63,16 @@ async function refresh() {
 
   const locs = await api('/api/locations').catch(()=>[]);
   const locDiv = document.getElementById('locations');
-  locDiv.innerHTML = locs.map(l => `
+  locDiv.innerHTML = '<p style="margin:4px 0 10px"><a href="/location-barcodes.html" class="muted-link" style="font-size:12px">Utskrift av alle strekkoder →</a></p>' +
+    locs.map(l => `
     <div class="loc-row" data-id="${l.id}">
-      <div class="loc-left">${l.name} (${l.barcode})</div>
+      <div class="loc-left" style="display:flex;align-items:center;gap:10px">
+        <img src="/api/locations/${l.id}/barcode.png" alt="${l.barcode}" style="height:46px;background:#fff;padding:4px;border:1px solid #eee;border-radius:4px">
+        <div>
+          <div><strong>${l.name}</strong></div>
+          <div style="font-size:11px;color:#666">${l.barcode}</div>
+        </div>
+      </div>
       <div class="loc-right">
         <button class="edit-loc btn small" data-id="${l.id}">Endre</button>
         <button class="delete-loc btn small danger" data-id="${l.id}">Slett</button>
