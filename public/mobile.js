@@ -45,6 +45,7 @@ const mvCancel = document.getElementById('mv-cancel');
 const mvMessage = document.getElementById('mv-message');
 const debugBtn = document.getElementById('toggle-debug');
 const debugLog = document.getElementById('debug-log');
+const testCamBtn = document.getElementById('test-camera');
 
 function dlog(msg){
   if(!debugLog) return; const ts = new Date().toISOString().substr(11,8);
@@ -54,6 +55,21 @@ if(debugBtn){
   debugBtn.addEventListener('click', ()=> {
     if(debugLog.style.display==='none'){ debugLog.style.display='block'; debugBtn.textContent='Skjul debug'; }
     else { debugLog.style.display='none'; debugBtn.textContent='Debug'; }
+  });
+}
+
+if(testCamBtn){
+  testCamBtn.addEventListener('click', async ()=> {
+    dlog('Starter testkamera');
+    if(!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)){ dlog('Ingen getUserMedia'); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      const track = stream.getVideoTracks()[0];
+      const caps = track.getCapabilities ? track.getCapabilities() : {}; dlog('Track label: '+track.label); dlog('Capabilities: '+JSON.stringify(caps));
+      // Vis stillbilde container
+      videoEl.innerHTML=''; const v=document.createElement('video'); v.autoplay=true; v.playsInline=true; v.srcObject=stream; videoEl.appendChild(v); scanStatus.textContent='Testkamera aktiv (ingen scanning).';
+      setTimeout(()=>{ track.stop(); dlog('Testkamera stoppet'); if(v.parentNode) v.parentNode.removeChild(v); videoEl.textContent='Ingen aktiv skann'; }, 8000);
+    } catch(e){ dlog('Testkamera feil: '+e.message); scanStatus.textContent='Kamera tilgang feilet: '+e.message; }
   });
 }
 
@@ -119,12 +135,17 @@ function startCameraScanner(){
   stopBtn.disabled = false;
   videoEl.textContent = '';
   try { Quagga.offDetected(); } catch(_) {}
-  Quagga.init({
+  const quaggaConfig = {
     inputStream: { name:'Live', type:'LiveStream', target: videoEl, constraints:{ facingMode:'environment' } },
     locate: true,
     numOfWorkers: navigator.hardwareConcurrency ? Math.min(4, navigator.hardwareConcurrency) : 2,
     decoder: { readers:[ 'code_128_reader' ] }
-  }, err => {
+  };
+  // Preflight permission by calling getUserMedia first (Android noen ganger trenger direkte kall)
+  navigator.mediaDevices.getUserMedia({ video: { facingMode:'environment' } }).then(stream => {
+    stream.getVideoTracks().forEach(t=> t.stop());
+    dlog('Preflight kamera OK');
+    Quagga.init(quaggaConfig, err => {
     if(err){
       const msg = 'Feil ved oppstart: '+(err.message||err);
       scanStatus.innerText = msg;
@@ -134,6 +155,10 @@ function startCameraScanner(){
     Quagga.start();
     scanStatus.innerText = scanMode === 'loc' ? 'Skann en lokasjon strekkode' : 'Skann en del strekkode';
     dlog('Quagga startet');
+  });
+  }).catch(e => {
+    dlog('Preflight feilet: '+e.message);
+    scanStatus.innerText='Kamera tilgang blokkert: '+e.message;
   });
   let pendingCode = null; let pendingTime = 0;
   Quagga.onDetected(det => {
