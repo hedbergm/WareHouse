@@ -112,6 +112,18 @@ function sendAlertEmail(part, totalQty) {
   });
 }
 
+// Manual test endpoint for alert email
+app.post('/api/debug/test-alert', async (req,res) => {
+  try {
+    const pn = (req.body && req.body.part_number) || req.query.part_number;
+    if(!pn) return res.status(400).json({ error:'part_number required'});
+    const part = await getPartByNumber(pn);
+    if(!part) return res.status(404).json({ error:'part not found'});
+    sendAlertEmail(part, await getTotalQty(part.id));
+    res.json({ ok:true });
+  } catch(e){ res.status(500).json({ error:e.message }); }
+});
+
 // Helpers
 function qMarks(params){ return usePg ? params.map((_,i)=>'$'+(i+1)) : params.map(()=>'?'); }
 
@@ -322,7 +334,11 @@ app.post('/api/stock/scan', async (req, res) => {
         const updSql = usePg ? 'UPDATE stock SET qty = qty + $1 WHERE part_id = $2 AND location_id = $3' : 'UPDATE stock SET qty = qty + ? WHERE part_id = ? AND location_id = ?';
         db.run(updSql, [q, part.id, loc.id]);
         const totalAfter = await getTotalQty(part.id);
-        if (totalAfter < part.min_qty) sendAlertEmail(part, totalAfter);
+        console.log('[ALERT CHECK][IN]', { part: part.part_number, totalAfter, min: part.min_qty });
+        if (totalAfter <= part.min_qty) {
+          console.log('[ALERT TRIGGER][IN]', part.part_number, totalAfter, '<= min', part.min_qty);
+          sendAlertEmail(part, totalAfter);
+        }
         finalize();
       } else {
         const selSql = usePg ? 'SELECT qty FROM stock WHERE part_id = $1 AND location_id = $2' : 'SELECT qty FROM stock WHERE part_id = ? AND location_id = ?';
@@ -333,7 +349,11 @@ app.post('/api/stock/scan', async (req, res) => {
           const updOut = usePg ? 'UPDATE stock SET qty = qty - $1 WHERE part_id = $2 AND location_id = $3' : 'UPDATE stock SET qty = qty - ? WHERE part_id = ? AND location_id = ?';
           db.run(updOut, [q, part.id, loc.id]);
           const totalAfter = await getTotalQty(part.id);
-          if (totalAfter < part.min_qty) sendAlertEmail(part, totalAfter);
+          console.log('[ALERT CHECK][OUT]', { part: part.part_number, totalAfter, min: part.min_qty });
+          if (totalAfter <= part.min_qty) {
+            console.log('[ALERT TRIGGER][OUT]', part.part_number, totalAfter, '<= min', part.min_qty);
+            sendAlertEmail(part, totalAfter);
+          }
           finalize();
         });
       }
