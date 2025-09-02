@@ -155,7 +155,7 @@ app.put('/api/locations/:id', (req, res) => {
   const id = req.params.id;
   const { name, barcode } = req.body;
   if (!name || !barcode) return res.status(400).json({ error: 'name and barcode required' });
-  const sql = `UPDATE locations SET name = ${qMarks([name])[0]}, barcode = ${qMarks([barcode])[0]} WHERE id = ${qMarks([id])[0]}`;
+  const sql = usePg ? 'UPDATE locations SET name = $1, barcode = $2 WHERE id = $3' : 'UPDATE locations SET name = ?, barcode = ? WHERE id = ?';
   db.run(sql, [name, barcode, id], function(err) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ id, name, barcode });
@@ -264,7 +264,7 @@ app.put('/api/parts/:id', (req, res) => {
   const { part_number, description, min_qty } = req.body;
   if (!part_number) return res.status(400).json({ error: 'part_number required' });
   const minq = parseInt(min_qty || '0', 10);
-  const sql = `UPDATE parts SET part_number = ${qMarks([part_number])[0]}, description = ${qMarks([description || ''])[0]}, min_qty = ${qMarks([minq])[0]} WHERE id = ${qMarks([id])[0]}`;
+  const sql = usePg ? 'UPDATE parts SET part_number = $1, description = $2, min_qty = $3 WHERE id = $4' : 'UPDATE parts SET part_number = ?, description = ?, min_qty = ? WHERE id = ?';
   db.run(sql, [part_number, description || '', minq, id], function(err) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ id, part_number, description, min_qty: minq });
@@ -298,30 +298,36 @@ app.post('/api/stock/scan', async (req, res) => {
     if (!loc) return res.status(404).json({ error: 'location not found' });
 
     db.serialize(async () => {
-      // Ensure stock row exists
-  db.run(usePg? `INSERT INTO stock (part_id, location_id, qty) VALUES (${qMarks([0,0,0]).join(', ')}) ON CONFLICT (part_id, location_id) DO NOTHING` : `INSERT OR IGNORE INTO stock (part_id, location_id, qty) VALUES (?, ?, 0)`, [part.id, loc.id]);
+      // Ensure stock row exists (qty=0 if new)
+      const ensureSql = usePg ? 'INSERT INTO stock (part_id, location_id, qty) VALUES ($1,$2,0) ON CONFLICT (part_id, location_id) DO NOTHING' : 'INSERT OR IGNORE INTO stock (part_id, location_id, qty) VALUES (?, ?, 0)';
+      db.run(ensureSql, [part.id, loc.id]);
 
       if (action === 'in') {
-  db.run(`UPDATE stock SET qty = qty + ${qMarks([q])[0]} WHERE part_id = ${qMarks([part.id])[0]} AND location_id = ${qMarks([loc.id])[0]}`, [q, part.id, loc.id]);
+        const updSql = usePg ? 'UPDATE stock SET qty = qty + $1 WHERE part_id = $2 AND location_id = $3' : 'UPDATE stock SET qty = qty + ? WHERE part_id = ? AND location_id = ?';
+        db.run(updSql, [q, part.id, loc.id]);
+        const totalAfter = await getTotalQty(part.id);
+        if (totalAfter < part.min_qty) sendAlertEmail(part, totalAfter);
+        finalize();
       } else {
-        // Check available at location
-  db.get(`SELECT qty FROM stock WHERE part_id = ${qMarks([part.id])[0]} AND location_id = ${qMarks([loc.id])[0]}`, [part.id, loc.id], async (err, row) => {
+        const selSql = usePg ? 'SELECT qty FROM stock WHERE part_id = $1 AND location_id = $2' : 'SELECT qty FROM stock WHERE part_id = ? AND location_id = ?';
+        db.get(selSql, [part.id, loc.id], async (err, row) => {
+          if (err) return res.status(500).json({ error: err.message });
           const available = row ? row.qty : 0;
-          if (available < q) return res.status(400).json({ error: `Not enough stock at location (available ${available})` });
-          db.run(`UPDATE stock SET qty = qty - ${qMarks([q])[0]} WHERE part_id = ${qMarks([part.id])[0]} AND location_id = ${qMarks([loc.id])[0]}`, [q, part.id, loc.id]);
-
-          // After update check total
-          const totalAfter = await getTotalQty(part.id); // already updated
-          if (totalAfter < part.min_qty) {
-            sendAlertEmail(part, totalAfter);
-          }
+            if (available < q) return res.status(400).json({ error: `Not enough stock at location (available ${available})` });
+          const updOut = usePg ? 'UPDATE stock SET qty = qty - $1 WHERE part_id = $2 AND location_id = $3' : 'UPDATE stock SET qty = qty - ? WHERE part_id = ? AND location_id = ?';
+          db.run(updOut, [q, part.id, loc.id]);
+          const totalAfter = await getTotalQty(part.id);
+          if (totalAfter < part.min_qty) sendAlertEmail(part, totalAfter);
+          finalize();
         });
       }
 
-      // Log transaction
-  db.run(`INSERT INTO transactions (part_id, location_id, qty, action) VALUES (${qMarks([part.id, loc.id, q, action]).join(', ')})`, [part.id, loc.id, q, action]);
-      console.log('[STOCK SCAN]', { part: part.part_number, location: loc.barcode, action, qty: q });
-      res.json({ ok: true, part: part.part_number, location: loc.barcode, qty: q, action });
+      function finalize(){
+        const txSql = usePg ? 'INSERT INTO transactions (part_id, location_id, qty, action) VALUES ($1,$2,$3,$4)' : 'INSERT INTO transactions (part_id, location_id, qty, action) VALUES (?,?,?,?)';
+        db.run(txSql, [part.id, loc.id, q, action]);
+        console.log('[STOCK SCAN]', { part: part.part_number, location: loc.barcode, action, qty: q });
+        res.json({ ok: true, part: part.part_number, location: loc.barcode, qty: q, action });
+      }
     });
 
   } catch (err) {
