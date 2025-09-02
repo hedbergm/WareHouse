@@ -84,7 +84,7 @@ app.post('/api/mobile/login', (req, res) => {
   const { username, password } = req.body || {};
   // Fallback: allow simple password-only auth via MOBILE_PASS (optional)
   if (process.env.MOBILE_USER && process.env.MOBILE_PASS) {
-    if (username === process.env.MOBILE_USER && password === process.env.MOBILE_PASS) {
+  if (username && username.toLowerCase() === process.env.MOBILE_USER.toLowerCase() && password === process.env.MOBILE_PASS) {
       const token = Buffer.from(`${username}:${password}`).toString('base64');
       return res.json({ ok: true, token, username, mode: 'env-user-pass' });
     }
@@ -372,6 +372,19 @@ app.get('/api/debug/locations', (req,res) => {
   db.all('SELECT * FROM locations', (e, rows) => {
     if (e) return res.status(500).json({ error: e.message });
     res.json(rows);
+  });
+});
+
+// Mobile auth debug (do NOT expose in production without protection)
+app.get('/api/debug/mobile-auth', (req,res) => {
+  db.get('SELECT COUNT(*) as c FROM users', [], (e,row) => {
+    res.json({
+      envUserSet: !!process.env.MOBILE_USER,
+      envPassSet: !!process.env.MOBILE_PASS,
+      mobileUser: process.env.MOBILE_USER || null,
+      mode: process.env.MOBILE_USER && process.env.MOBILE_PASS ? 'env-user-pass' : (process.env.MOBILE_PASS ? 'env-pass' : 'users-table'),
+      usersInTable: e ? 'err' : row.c
+    });
   });
 });
 
