@@ -41,6 +41,19 @@ const mvAction = document.getElementById('mv-action');
 const mvSubmit = document.getElementById('mv-submit');
 const mvCancel = document.getElementById('mv-cancel');
 const mvMessage = document.getElementById('mv-message');
+const debugBtn = document.getElementById('toggle-debug');
+const debugLog = document.getElementById('debug-log');
+
+function dlog(msg){
+  if(!debugLog) return; const ts = new Date().toISOString().substr(11,8);
+  debugLog.textContent += `[${ts}] ${msg}\n`;
+}
+if(debugBtn){
+  debugBtn.addEventListener('click', ()=> {
+    if(debugLog.style.display==='none'){ debugLog.style.display='block'; debugBtn.textContent='Skjul debug'; }
+    else { debugLog.style.display='none'; debugBtn.textContent='Debug'; }
+  });
+}
 
 let scanning = false;
 let scanMode = null; // 'loc' | 'part'
@@ -80,8 +93,17 @@ function startCameraScanner(){
   if (scanning) return;
   if (!(navigator && navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function')) {
     scanStatus.innerText = 'Kamera ikke tilgjengelig / krever HTTPS.';
+    dlog('getUserMedia ikke tilgjengelig');
     return;
   }
+  // Permission preflight
+  if(navigator.permissions && navigator.permissions.query){
+    navigator.permissions.query({ name: 'camera' }).then(r=> dlog('Permission camera: '+r.state)).catch(()=>{});
+  }
+  navigator.mediaDevices.enumerateDevices().then(list=>{
+    const cams = list.filter(d=> d.kind==='videoinput');
+    dlog('Fant '+cams.length+' kamera(er)');
+  }).catch(e=> dlog('enumerateDevices feil: '+e.message));
   scanning = true;
   stopBtn.disabled = false;
   videoEl.textContent = '';
@@ -92,9 +114,15 @@ function startCameraScanner(){
     numOfWorkers: navigator.hardwareConcurrency ? Math.min(4, navigator.hardwareConcurrency) : 2,
     decoder: { readers:[ 'code_128_reader' ] }
   }, err => {
-    if(err){ scanStatus.innerText = 'Feil ved oppstart: '+(err.message||err); scanning=false; stopBtn.disabled=true; return; }
+    if(err){
+      const msg = 'Feil ved oppstart: '+(err.message||err);
+      scanStatus.innerText = msg;
+      dlog(msg);
+      scanning=false; stopBtn.disabled=true; return;
+    }
     Quagga.start();
     scanStatus.innerText = scanMode === 'loc' ? 'Skann en lokasjon strekkode' : 'Skann en del strekkode';
+    dlog('Quagga startet');
   });
   let pendingCode = null; let pendingTime = 0;
   Quagga.onDetected(det => {
