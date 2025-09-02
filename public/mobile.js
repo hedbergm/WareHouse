@@ -184,13 +184,14 @@ function startCameraScanner(){
 
 function stopCameraScanner(){
   if(!scanning) return;
-  scanning=false; Quagga.stop(); scanStatus.innerText='Stoppet'; stopBtn.disabled=true; scanMode=null; if(!videoEl.hasChildNodes()) videoEl.textContent='Ingen aktiv skann';
+  scanning=false; Quagga.stop(); scanStatus.innerText='Stoppet'; stopBtn.disabled=true; if(!videoEl.hasChildNodes()) videoEl.textContent='Ingen aktiv skann';
 }
 
 async function handleScan(code){
+  const mode = scanMode; // capture before stopping (stop clears state UI-wise)
   stopCameraScanner();
-  lastScan.innerText = (scanMode==='loc'?'Lokasjon: ':'Del: ')+code;
-  if(scanMode==='loc'){
+  lastScan.innerText = (mode==='loc'?'Lokasjon: ':'Del: ')+code;
+  if(mode==='loc'){
     const opt = Array.from(locSelect.options).find(o=> o.value===code || o.text.includes(code));
   if(opt){ locSelect.value=opt.value; scanStatus.innerText='Lokasjon valgt'; loadLocationContents(locSelect.value); return; }
   // create new location quickly
