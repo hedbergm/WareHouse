@@ -28,10 +28,12 @@ const mainScreen = document.getElementById('main-screen');
 const locSelect = document.getElementById('loc-select');
 const scanLocBtn = document.getElementById('scan-loc');
 const scanPartBtn = document.getElementById('scan-part');
+const viewLocBtn = document.getElementById('view-loc');
 const stopBtn = document.getElementById('stop-scan');
 const videoEl = document.getElementById('video');
 const scanStatus = document.getElementById('scan-status');
 const lastScan = document.getElementById('last-scan');
+const locContents = document.getElementById('loc-contents');
 const movementPanel = document.getElementById('movement-panel');
 const mvPart = document.getElementById('mv-part');
 const mvQty = document.getElementById('mv-qty');
@@ -104,6 +106,7 @@ async function loadLocations() {
 
 scanLocBtn.addEventListener('click', () => startScan('loc'));
 scanPartBtn.addEventListener('click', () => startScan('part'));
+if(viewLocBtn){ viewLocBtn.addEventListener('click', () => { if(!locSelect.value){ locContents.textContent='Ingen lokasjon valgt'; return;} loadLocationContents(locSelect.value); }); }
 stopBtn.addEventListener('click', () => stopCameraScanner());
 
 function startScan(mode){
@@ -189,10 +192,10 @@ async function handleScan(code){
   lastScan.innerText = (scanMode==='loc'?'Lokasjon: ':'Del: ')+code;
   if(scanMode==='loc'){
     const opt = Array.from(locSelect.options).find(o=> o.value===code || o.text.includes(code));
-    if(opt){ locSelect.value=opt.value; scanStatus.innerText='Lokasjon valgt'; return; }
-    // create new location quickly
-    try { await api('/api/locations','POST',{ name: code, barcode: code }); await loadLocations(); locSelect.value=code; scanStatus.innerText='Lokasjon opprettet'; }
-    catch(e){ scanStatus.innerText='Feil lokasjon'; }
+  if(opt){ locSelect.value=opt.value; scanStatus.innerText='Lokasjon valgt'; loadLocationContents(locSelect.value); return; }
+  // create new location quickly
+  try { await api('/api/locations','POST',{ name: code, barcode: code }); await loadLocations(); locSelect.value=code; scanStatus.innerText='Lokasjon opprettet'; loadLocationContents(locSelect.value); }
+  catch(e){ scanStatus.innerText='Feil lokasjon'; }
     return;
   }
   // part scan
@@ -221,8 +224,20 @@ mvSubmit.addEventListener('click', async () => {
   mvSubmit.disabled=true;
   try {
     await api('/api/stock/scan','POST',{ location_barcode: locSelect.value, part_number: part, qty, action });
-    mvMessage.textContent='Lagret'; movementPanel.classList.add('hidden');
+    mvMessage.textContent='Lagret'; movementPanel.classList.add('hidden'); loadLocationContents(locSelect.value);
   } catch(e){ mvMessage.textContent='Feil: '+ (e.error||''); }
   finally { mvSubmit.disabled=false; }
 });
+
+async function loadLocationContents(barcode){
+  locContents.textContent='Laster...';
+  try {
+    const data = await api('/api/locations/'+encodeURIComponent(barcode)+'/stock');
+    if(!data.items.length){ locContents.textContent='Ingen deler her'; return; }
+    locContents.innerHTML = data.items.map(i => `${i.part_number} – <strong>${i.qty}</strong>`).join('<br>');
+  } catch(e){ locContents.textContent='Feil ved lasting'; }
+}
+
+// Update contents when user changes selection manually
+locSelect.addEventListener('change', () => { if(locSelect.value) loadLocationContents(locSelect.value); else locContents.textContent='Ingen lokasjon valgt'; });
 

@@ -150,6 +150,22 @@ app.get('/api/locations', (req, res) => {
   });
 });
 
+// Get stock contents for a location by its barcode
+app.get('/api/locations/:barcode/stock', async (req, res) => {
+  try {
+    const barcode = req.params.barcode;
+    const loc = await getLocationByBarcode(barcode);
+    if(!loc) return res.status(404).json({ error: 'location not found' });
+    const sql = `SELECT p.part_number, p.description, s.qty FROM stock s JOIN parts p ON s.part_id = p.id WHERE s.location_id = ${qMarks([loc.id])[0]}`;
+    db.all(sql, [loc.id], (e, rows) => {
+      if(e) return res.status(500).json({ error: e.message });
+      res.json({ location: { id: loc.id, name: loc.name, barcode: loc.barcode }, items: rows });
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Update location
 app.put('/api/locations/:id', (req, res) => {
   const id = req.params.id;
