@@ -20,10 +20,12 @@
     <h2>PartStore — Mobil</h2>
 
     <div id="login-screen">
-      <label>Passord for mobil</label>
-      <input id="mobile-pass" type="password" placeholder="Skriv passord">
-      <button id="mobile-login" class="btn">Logg inn</button>
-      <div class="muted">Passordet settes i `.env` som MOBILE_PASS (kan legges til senere).</div>
+  <label>Brukernavn</label>
+  <input id="mobile-user" type="text" placeholder="Brukernavn" autocomplete="username">
+  <label style="margin-top:8px">Passord</label>
+  <input id="mobile-pass" type="password" placeholder="Passord" autocomplete="current-password">
+  <button id="mobile-login" class="btn" style="margin-top:10px">Logg inn</button>
+  <div id="login-msg" class="muted" style="margin-top:6px;font-size:12px">Bruker styres av MOBILE_USER / MOBILE_PASS eller users-tabellen.</div>
     </div>
 
     <div id="main-screen" class="hidden">

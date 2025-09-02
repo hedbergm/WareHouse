@@ -23,8 +23,10 @@ if (typeof navigator !== 'undefined') {
   }
 }
 
+const mobileUser = document.getElementById('mobile-user');
 const mobilePass = document.getElementById('mobile-pass');
 const loginBtn = document.getElementById('mobile-login');
+const loginMsg = document.getElementById('login-msg');
 const loginScreen = document.getElementById('login-screen');
 const mainScreen = document.getElementById('main-screen');
 const locSelect = document.getElementById('loc-select');
@@ -60,17 +62,20 @@ let scanMode = null; // 'loc' | 'part'
 let currentLoc = null;
 
 loginBtn.addEventListener('click', async () => {
-  const u = prompt('Brukernavn') || '';
-  const p = mobilePass.value || '';
-  if (!u || !p) return alert('Brukernavn og passord kreves');
+  const u = (mobileUser.value||'').trim();
+  const p = (mobilePass.value||'');
+  if (!u || !p) { loginMsg.textContent='Brukernavn og passord kreves'; return; }
+  loginBtn.disabled = true; loginMsg.textContent='Logger inn...';
   try {
-    const r = await api('/api/mobile/login','POST',{ username: u.trim(), password: p });
+    const r = await api('/api/mobile/login','POST',{ username: u, password: p });
     sessionStorage.setItem('mobile-token', r.token);
     sessionStorage.setItem('mobile-user', r.username);
     loginScreen.classList.add('hidden');
     mainScreen.classList.remove('hidden');
     loadLocations();
-  } catch (e) { alert('Login feilet'); }
+  } catch (e) {
+    loginMsg.textContent = 'Login feilet';
+  } finally { loginBtn.disabled=false; }
 });
 
 async function loadLocations() {
