@@ -103,7 +103,13 @@ function startCameraScanner(){
   }
   // Permission preflight
   if(navigator.permissions && navigator.permissions.query){
-    navigator.permissions.query({ name: 'camera' }).then(r=> dlog('Permission camera: '+r.state)).catch(()=>{});
+    navigator.permissions.query({ name: 'camera' }).then(r=> {
+      dlog('Permission camera: '+r.state);
+      if(r.state === 'denied'){
+        scanStatus.innerHTML = 'Kamera blokkert av nettleser. Tillat kamera:<br>• Chrome: Trykk lås‑ikon → Nettstedsinnstillinger → Kamera → Tillat<br>• Safari iOS: Innstillinger → Safari → Kamera → Tillat / Spør eller AA‑ikon → Nettstedsinnstillinger.<br>Endre, gå tilbake og trykk skann igjen.';
+        return;
+      }
+    }).catch(()=>{});
   }
   navigator.mediaDevices.enumerateDevices().then(list=>{
     const cams = list.filter(d=> d.kind==='videoinput');
