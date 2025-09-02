@@ -71,45 +71,7 @@ app.get('/api/network', (req, res) => {
   res.status(404).json({ error: 'no-ip' });
 });
 
-// Optional simple mobile pass validation endpoint (demo only)
-app.get('/api/mobile/validate', (req, res) => {
-  const pass = req.query.pass || '';
-  if (!process.env.MOBILE_PASS) return res.status(400).json({ error: 'MOBILE_PASS not configured' });
-  if (pass === process.env.MOBILE_PASS) return res.json({ ok: true });
-  res.status(401).json({ error: 'invalid' });
-});
-
-// Simple mobile login using users table
-app.post('/api/mobile/login', (req, res) => {
-  const { username, password } = req.body || {};
-  const debug = process.env.DEBUG_MOBILE_AUTH === '1';
-  function logDebug(msg, extra){ if(debug) console.log('[MOBILE AUTH]', msg, extra||''); }
-  logDebug('attempt', { username, hasPass: !!password, mode: process.env.MOBILE_USER && process.env.MOBILE_PASS ? 'env-user-pass' : (process.env.MOBILE_PASS ? 'env-pass' : 'users-table') });
-  if (process.env.MOBILE_USER && process.env.MOBILE_PASS) {
-    if (username && username.toLowerCase() === process.env.MOBILE_USER.toLowerCase() && password === process.env.MOBILE_PASS) {
-      const token = Buffer.from(`${username}:${password}`).toString('base64');
-      logDebug('env-user-pass success', { username });
-      return res.json({ ok: true, token, username, mode: 'env-user-pass' });
-    }
-    logDebug('env-user-pass mismatch', { providedUser: username, expectedUser: process.env.MOBILE_USER });
-  } else if (process.env.MOBILE_PASS && password === process.env.MOBILE_PASS) {
-    const user = username && username.trim() ? username.trim() : 'mobile';
-    const token = Buffer.from(`${user}:${password}`).toString('base64');
-    logDebug('env-pass success (legacy)', { user });
-    return res.json({ ok: true, token, username: user, mode: 'env-pass' });
-  }
-  if (!username || !password) return res.status(400).json({ error: 'username and password required' });
-  db.get('SELECT * FROM users WHERE username = ? AND password = ?', [username, password], (err, row) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!row) {
-      logDebug('users-table invalid', { username });
-      return res.status(401).json({ error: debug ? 'invalid (no env match & not in users table)' : 'invalid' });
-    }
-    logDebug('users-table success', { username });
-    const token = Buffer.from(`${username}:${password}`).toString('base64');
-    res.json({ ok: true, token, username, mode: 'users-table' });
-  });
-});
+// Mobile login removed (temporary open access per request)
 
 // Nodemailer transporter placeholder - will use Office365 when env vars are present
 let transporter = null;
@@ -382,18 +344,7 @@ app.get('/api/debug/locations', (req,res) => {
   });
 });
 
-// Mobile auth debug (do NOT expose in production without protection)
-app.get('/api/debug/mobile-auth', (req,res) => {
-  db.get('SELECT COUNT(*) as c FROM users', [], (e,row) => {
-    res.json({
-      envUserSet: !!process.env.MOBILE_USER,
-      envPassSet: !!process.env.MOBILE_PASS,
-      mobileUser: process.env.MOBILE_USER || null,
-      mode: process.env.MOBILE_USER && process.env.MOBILE_PASS ? 'env-user-pass' : (process.env.MOBILE_PASS ? 'env-pass' : 'users-table'),
-      usersInTable: e ? 'err' : row.c
-    });
-  });
-});
+// /api/debug/mobile-auth removed with mobile login
 
 // Get stock for a part
 app.get('/api/stock/:part_number', async (req, res) => {
