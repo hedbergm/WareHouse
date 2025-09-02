@@ -82,25 +82,32 @@ app.get('/api/mobile/validate', (req, res) => {
 // Simple mobile login using users table
 app.post('/api/mobile/login', (req, res) => {
   const { username, password } = req.body || {};
-  // Fallback: allow simple password-only auth via MOBILE_PASS (optional)
+  const debug = process.env.DEBUG_MOBILE_AUTH === '1';
+  function logDebug(msg, extra){ if(debug) console.log('[MOBILE AUTH]', msg, extra||''); }
+  logDebug('attempt', { username, hasPass: !!password, mode: process.env.MOBILE_USER && process.env.MOBILE_PASS ? 'env-user-pass' : (process.env.MOBILE_PASS ? 'env-pass' : 'users-table') });
   if (process.env.MOBILE_USER && process.env.MOBILE_PASS) {
-  if (username && username.toLowerCase() === process.env.MOBILE_USER.toLowerCase() && password === process.env.MOBILE_PASS) {
+    if (username && username.toLowerCase() === process.env.MOBILE_USER.toLowerCase() && password === process.env.MOBILE_PASS) {
       const token = Buffer.from(`${username}:${password}`).toString('base64');
+      logDebug('env-user-pass success', { username });
       return res.json({ ok: true, token, username, mode: 'env-user-pass' });
     }
+    logDebug('env-user-pass mismatch', { providedUser: username, expectedUser: process.env.MOBILE_USER });
   } else if (process.env.MOBILE_PASS && password === process.env.MOBILE_PASS) {
-    // Legacy behaviour if only MOBILE_PASS is set (any username accepted)
     const user = username && username.trim() ? username.trim() : 'mobile';
     const token = Buffer.from(`${user}:${password}`).toString('base64');
+    logDebug('env-pass success (legacy)', { user });
     return res.json({ ok: true, token, username: user, mode: 'env-pass' });
   }
   if (!username || !password) return res.status(400).json({ error: 'username and password required' });
   db.get('SELECT * FROM users WHERE username = ? AND password = ?', [username, password], (err, row) => {
     if (err) return res.status(500).json({ error: err.message });
-    if (!row) return res.status(401).json({ error: 'invalid' });
-    // Return simple token (for demo): base64(username:password)
+    if (!row) {
+      logDebug('users-table invalid', { username });
+      return res.status(401).json({ error: debug ? 'invalid (no env match & not in users table)' : 'invalid' });
+    }
+    logDebug('users-table success', { username });
     const token = Buffer.from(`${username}:${password}`).toString('base64');
-    res.json({ ok: true, token, username });
+    res.json({ ok: true, token, username, mode: 'users-table' });
   });
 });
 
