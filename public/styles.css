@@ -60,3 +60,9 @@ label{font-size:12px; color:var(--muted); display:block; margin-bottom:6px}
 	nav.portal-nav { gap:12px }
 	body { padding:18px }
 }
+
+/* Mobile scanner centering */
+#scanner-area{display:flex;flex-direction:column;align-items:center}
+#video{max-width:500px;margin:0 auto;display:flex;justify-content:center;align-items:center;aspect-ratio:16/9;position:relative}
+#video video,#video canvas{width:100%!important;height:100%!important;object-fit:cover;border-radius:8px}
+#video img{max-width:100%;border-radius:8px}
