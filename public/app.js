@@ -140,7 +140,7 @@ async function refreshLog(showLoading=true){
       return `<div style="display:flex;flex-direction:column;padding:6px 10px;border-top:1px solid #f1f1f1;font-size:12px">
     <div style="display:flex;justify-content:space-between;gap:8px"><strong>${r.part_number}</strong><span>${ts}</span></div>
     <div style="display:flex;justify-content:space-between;gap:8px">${dir}<span>${r.location_name||''} (${r.location_barcode})</span></div>
-    <div style="display:flex;justify-content:space-between;gap:8px;color:#444"><span style="font-size:11px">${r.username ? 'Av: '+r.username : ''}</span></div>
+  <div style="display:flex;justify-content:space-between;gap:8px;color:#444"><span style="font-size:11px">${r.username ? 'Bruker: '+r.username : ''}</span></div>
         <div style="color:#555">${r.description||''}</div>
       </div>`;
     }).join('');
