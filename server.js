@@ -70,6 +70,11 @@ app.get('/', (req,res)=> res.sendFile(path.join(__dirname,'public','home.html'))
 // Serve static assets with absolute path to avoid issues if process cwd differs
 app.use(express.static(path.join(__dirname,'public'), { index: false }));
 
+// Explicit route for logo (troubleshooting 404 in some deploy contexts)
+app.get('/Holship_logo.png', (req,res) => {
+  res.sendFile(path.join(__dirname,'public','Holship_logo.png'));
+});
+
 const PORT = process.env.PORT || 3000; // ngrok fjernet
 
 const os = require('os');
