@@ -23,11 +23,11 @@ async function refresh() {
   }));
 
   partsDiv.innerHTML = partsWithStock.map(({ part: p, stock }) => `
-    <div class="part-row" data-id="${p.id}">
+  <div class="part-row" data-id="${p.id}">
       <div class="part-left">
         <strong>${p.part_number}</strong>
         <div class="desc">${p.description || ''}</div>
-        <div class="meta">Min: ${p.min_qty} · Totalt: ${stock.total}</div>
+    <div class="meta">Min: ${p.min_qty} · Totalt: ${stock.total}${p.default_location_id ? ' · Fast lokasjon' : ''}</div>
         <div class="locs">
           ${stock.locations && stock.locations.length ? stock.locations.map(l => `
             <div class="loc-item">${l.location_name} (${l.barcode}) — <strong>${l.qty}</strong></div>
@@ -52,13 +52,14 @@ async function refresh() {
     await refresh();
   }));
   document.querySelectorAll('.edit-part').forEach(b => b.addEventListener('click', async (e) => {
-    const id = e.currentTarget.dataset.id;
-    const row = e.currentTarget.closest('.part-row');
-    const pn = prompt('Nytt delenummer', row.querySelector('strong').innerText) || '';
-    const desc = prompt('Ny beskrivelse', row.querySelector('.desc').innerText) || '';
-    const minq = prompt('Ny min antall', '0');
-    await api(`/api/parts/${id}`, 'PUT', { part_number: pn.trim(), description: desc.trim(), min_qty: parseInt(minq || '0', 10) }).catch(err => alert(JSON.stringify(err)));
-    await refresh();
+  const id = e.currentTarget.dataset.id;
+  const row = e.currentTarget.closest('.part-row');
+  const pn = prompt('Nytt delenummer', row.querySelector('strong').innerText) || '';
+  const desc = prompt('Ny beskrivelse', row.querySelector('.desc').innerText) || '';
+  const minq = prompt('Ny min antall', '0');
+  const defLoc = prompt('Fast lokasjon barcode (tom for ingen)', '');
+  await api(`/api/parts/${id}`, 'PUT', { part_number: pn.trim(), description: desc.trim(), min_qty: parseInt(minq || '0', 10), default_location_barcode: defLoc ? defLoc.trim() : undefined }).catch(err => alert(JSON.stringify(err)));
+  await refresh();
   }));
 
   const locs = await api('/api/locations').catch(()=>[]);
@@ -109,9 +110,10 @@ document.getElementById('add-part').addEventListener('click', async () => {
   const part_number = document.getElementById('part-number').value.trim();
   const description = document.getElementById('part-desc').value.trim();
   const min_qty = parseInt(document.getElementById('part-min').value || '0', 10);
+  const default_location_barcode = (document.getElementById('part-default-loc') || { value: '' }).value.trim();
   if (!part_number) return alert('delenummer kreves');
-  await api('/api/parts', 'POST', { part_number, description, min_qty }).catch(e => alert(JSON.stringify(e)));
-  document.getElementById('part-number').value=''; document.getElementById('part-desc').value=''; document.getElementById('part-min').value='';
+  await api('/api/parts', 'POST', { part_number, description, min_qty, default_location_barcode: default_location_barcode || undefined }).catch(e => alert(JSON.stringify(e)));
+  document.getElementById('part-number').value=''; document.getElementById('part-desc').value=''; document.getElementById('part-min').value=''; if (document.getElementById('part-default-loc')) document.getElementById('part-default-loc').value='';
   await refresh();
 });
 

@@ -320,6 +320,13 @@ app.put('/api/parts/:id', async (req, res) => {
   const sql = usePg ? 'UPDATE parts SET part_number = $1, description = $2, min_qty = $3, default_location_id = $4 WHERE id = $5' : 'UPDATE parts SET part_number = ?, description = ?, min_qty = ?, default_location_id = ? WHERE id = ?';
   db.run(sql, [part_number, description || '', minq, defaultLocId, id], function(err) {
     if (err) return res.status(500).json({ error: err.message });
+    // Ensure stock row exists for default location after update (e.g., when setting fixed location later)
+    if (defaultLocId) {
+      const ensureSql = usePg
+        ? 'INSERT INTO stock (part_id, location_id, qty) VALUES ($1,$2,0) ON CONFLICT (part_id, location_id) DO NOTHING'
+        : 'INSERT OR IGNORE INTO stock (part_id, location_id, qty) VALUES (?,?,0)';
+      db.run(ensureSql, [id, defaultLocId]);
+    }
     res.json({ id, part_number, description, min_qty: minq, default_location_id: defaultLocId });
   });
 });
