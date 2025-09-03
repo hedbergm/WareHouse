@@ -99,6 +99,19 @@ async function refresh() {
   }));
 }
 
+// Fallback: hvis HTML er gammel og ikke har feltet for fast lokasjon, legg det inn dynamisk
+(function ensureFixedLocationField(){
+  if (document.getElementById('part-default-loc')) return; // already present
+  const partNumberInput = document.getElementById('part-number');
+  if(!partNumberInput) return;
+  const formRow = partNumberInput.closest('.form-row');
+  if(!formRow) return;
+  const div = document.createElement('div');
+  div.className = 'col';
+  div.innerHTML = '<label>Fast lokasjon (barcode)</label><input id="part-default-loc" placeholder="LOC-A1">';
+  formRow.appendChild(div);
+})();
+
 document.getElementById('add-loc').addEventListener('click', async () => {
   const name = document.getElementById('loc-name').value.trim();
   const barcode = document.getElementById('loc-barcode').value.trim();
