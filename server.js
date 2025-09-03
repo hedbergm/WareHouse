@@ -8,6 +8,9 @@ const dbSqlite = require('./db');
 const pgdb = require('./pgdb');
 const usePg = pgdb.enabled();
 console.log('[DB MODE]', usePg ? 'Postgres' : 'SQLite');
+if(!usePg){
+  console.warn('[WARN] Kjører med SQLite fallback. Data lagres i lokal fil og forsvinner ved ny container/deploy i host (Render). Sett Postgres env-variabler (PGHOST, PGUSER, PGPASSWORD, PGDATABASE, PGPORT) for å bevare data.');
+}
 
 // Ensure Postgres schema exists (idempotent) so redeploys don't show "missing" data due to absent tables
 if (usePg) {
