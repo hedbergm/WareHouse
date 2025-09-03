@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Login - Delelager</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    body { display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f5f7fa; }
+    .card { background:#fff;padding:32px 28px;border:1px solid #ddd;border-radius:10px;max-width:360px;width:100%;box-shadow:0 4px 18px rgba(0,0,0,0.06); }
+    h1 { font-size:20px;margin:0 0 18px 0;text-align:center; }
+    label { display:block;font-size:13px;font-weight:600;margin-bottom:4px; }
+    input { width:100%;padding:10px 12px;border:1px solid #cfd3d9;border-radius:6px;font-size:15px;margin-bottom:14px; }
+    button { width:100%;padding:12px 14px;background:#0d47a1;color:#fff;border:none;border-radius:6px;font-size:15px;font-weight:600;cursor:pointer; }
+    button:hover { background:#0b3d8d; }
+    .msg { margin-top:12px;font-size:13px;text-align:center;min-height:18px;color:#c62828; }
+    .ok { color:#2e7d32; }
+    .logo { text-align:center;margin-bottom:16px; }
+    .logo img { max-width:160px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo"><img id="logo" alt="Logo"/></div>
+    <h1>Logg inn</h1>
+    <form id="login-form">
+      <label>Brukernavn</label>
+      <input id="username" autocomplete="username" autofocus>
+      <label>Passord</label>
+      <input id="password" type="password" autocomplete="current-password">
+      <button type="submit">Logg inn</button>
+      <div class="msg" id="msg"></div>
+    </form>
+  </div>
+  <script>
+    fetch('/api/logo-base64').then(r=>r.json()).then(d=>{ if(d.data) document.getElementById('logo').src=d.data; });
+    const form = document.getElementById('login-form');
+    form.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const u = username.value.trim();
+      const p = password.value;
+      msg.textContent='';
+      const res = await fetch('/api/login',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username:u, password:p }) });
+      if(res.ok){ msg.textContent='Innlogging vellykket'; msg.classList.add('ok'); setTimeout(()=> location.href='/home.html',400); }
+      else { const j = await res.json().catch(()=>({error:'Feil'})); msg.textContent=j.error||'Feil'; }
+    });
+  </script>
+</body>
+</html>

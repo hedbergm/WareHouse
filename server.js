@@ -1,5 +1,7 @@
 require('dotenv').config();
 const express = require('express');
+const session = require('express-session');
+const bcrypt = require('bcryptjs');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const bwipjs = require('bwip-js');
@@ -63,11 +65,30 @@ const path = require('path');
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'dev-secret-change-me',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 1000*60*60*8 }
+}));
 
-// Root should show home.html (not index.html)
-app.get('/', (req,res)=> res.sendFile(path.join(__dirname,'public','home.html')));
+// Auth middleware
+function requireAuth(req,res,next){
+  if(req.session && req.session.user) return next();
+  if(req.path.startsWith('/api/')) return res.status(401).json({ error: 'unauthorized' });
+  return res.redirect('/login.html');
+}
 
-// Serve static assets with absolute path to avoid issues if process cwd differs
+// Root redirect to home
+app.get('/', (req,res)=> res.redirect('/home.html'));
+
+// Static serving with protection of html pages (except login)
+app.use((req,res,next)=>{
+  const open = ['/login.html','/styles.css','/Holship_logo.png','/api/logo-base64'];
+  if(open.includes(req.path) || req.path.startsWith('/api/')) return next();
+  if(req.path.endsWith('.html')) return requireAuth(req,res,next);
+  next();
+});
 app.use(express.static(path.join(__dirname,'public'), { index: false }));
 
 // Explicit route for logo (troubleshooting 404 in some deploy contexts)
@@ -90,7 +111,7 @@ const PORT = process.env.PORT || 3000; // ngrok fjernet
 const os = require('os');
 
 // Return first non-internal IPv4 address (LAN)
-app.get('/api/network', (req, res) => {
+app.get('/api/network', requireAuth, (req, res) => {
   const nets = os.networkInterfaces();
   for (const name of Object.keys(nets)) {
     for (const net of nets[name]) {
@@ -102,7 +123,55 @@ app.get('/api/network', (req, res) => {
   res.status(404).json({ error: 'no-ip' });
 });
 
-// Mobile login removed (temporary open access per request)
+// === Users & Auth setup ===
+function seedIfNeeded(){
+  if(usePg){
+    (async ()=>{
+      try {
+        const rows = await pgdb.all('SELECT username FROM users');
+        if(!rows.find(r=> r.username==='Tommy')) await seedPg();
+      } catch(e){ console.error('Seed check failed (pg)', e.message); }
+    })();
+  } else {
+    dbSqlite.all('SELECT username FROM users', [], async (e, rows)=>{
+      if(e) return;
+      if(!rows.find(r=> r.username==='Tommy')) await seedSqlite();
+    });
+  }
+}
+
+async function seedPg(){
+  const users = [ ['Tommy','tob2025'], ['Slava','sl2025'], ['Elias','eli2025'], ['Admin','Admin!'] ];
+  for(const [u,p] of users){
+    try { const hash = await bcrypt.hash(p,10); await pgdb.run('INSERT INTO users (username,password) VALUES ($1,$2) ON CONFLICT (username) DO NOTHING',[u,hash]); } catch(_){}
+  }
+}
+async function seedSqlite(){
+  const users = [ ['Tommy','tob2025'], ['Slava','sl2025'], ['Elias','eli2025'], ['Admin','Admin!'] ];
+  for(const [u,p] of users){
+    const hash = await bcrypt.hash(p,10);
+    dbSqlite.run('INSERT OR IGNORE INTO users (username,password) VALUES (?,?)',[u,hash]);
+  }
+}
+seedIfNeeded();
+
+app.post('/api/login', (req,res)=>{
+  const { username, password } = req.body || {};
+  if(!username || !password) return res.status(400).json({ error: 'username and password required' });
+  const sql = usePg ? 'SELECT * FROM users WHERE username = $1' : 'SELECT * FROM users WHERE username = ?';
+  db.get(sql, [username], async (err, user)=>{
+    if(err) return res.status(500).json({ error: err.message });
+    if(!user) return res.status(401).json({ error: 'invalid credentials' });
+    const ok = await bcrypt.compare(password, user.password);
+    if(!ok) return res.status(401).json({ error: 'invalid credentials' });
+    req.session.user = { id: user.id, username: user.username };
+    res.json({ ok:true, user: { username: user.username } });
+  });
+});
+app.post('/api/logout', (req,res)=>{ req.session.destroy(()=> res.json({ ok:true })); });
+app.get('/api/me', (req,res)=>{ if(!req.session.user) return res.status(401).json({ error: 'unauthorized' }); res.json({ user: req.session.user }); });
+
+// Mobile login removed earlier; replaced by unified login.
 
 // Nodemailer transporter placeholder - will use Office365 when env vars are present
 let transporter = null;
@@ -147,7 +216,7 @@ function sendAlertEmail(part, totalQty) {
 const alertState = {}; // part_id -> { lastSent:number }
 
 // Manual test endpoint for alert email
-app.post('/api/debug/test-alert', async (req,res) => {
+app.post('/api/debug/test-alert', requireAuth, async (req,res) => {
   try {
     const pn = (req.body && req.body.part_number) || req.query.part_number;
     if(!pn) return res.status(400).json({ error:'part_number required'});
@@ -166,7 +235,7 @@ function getLocationByBarcode(barcode) { return new Promise((res,rej)=> db.get(`
 function getTotalQty(part_id) { return new Promise((res,rej)=> db.get(`SELECT SUM(qty) as total FROM stock WHERE part_id = ${qMarks([''])[0]}`, [part_id], (e,r)=> e?rej(e):res(r? r.total:0))); }
 
 // API
-app.post('/api/locations', async (req, res) => {
+app.post('/api/locations', requireAuth, async (req, res) => {
   const { name, barcode } = req.body || {};
   if (!name || !barcode) return res.status(400).json({ error: 'name and barcode required' });
   try {
@@ -189,7 +258,7 @@ app.post('/api/locations', async (req, res) => {
   }
 });
 
-app.get('/api/locations', (req, res) => {
+app.get('/api/locations', requireAuth, (req, res) => {
   db.all('SELECT * FROM locations', [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows);
@@ -197,7 +266,7 @@ app.get('/api/locations', (req, res) => {
 });
 
 // Get stock contents for a location by its barcode
-app.get('/api/locations/:barcode/stock', async (req, res) => {
+app.get('/api/locations/:barcode/stock', requireAuth, async (req, res) => {
   try {
     const barcode = req.params.barcode;
     const loc = await getLocationByBarcode(barcode);
@@ -213,7 +282,7 @@ app.get('/api/locations/:barcode/stock', async (req, res) => {
 });
 
 // Update location
-app.put('/api/locations/:id', (req, res) => {
+app.put('/api/locations/:id', requireAuth, (req, res) => {
   const id = req.params.id;
   const { name, barcode } = req.body;
   if (!name || !barcode) return res.status(400).json({ error: 'name and barcode required' });
@@ -225,7 +294,7 @@ app.put('/api/locations/:id', (req, res) => {
 });
 
 // Delete location (and related stock/transactions)
-app.delete('/api/locations/:id', (req, res) => {
+app.delete('/api/locations/:id', requireAuth, (req, res) => {
   const id = req.params.id;
   db.serialize(() => {
   db.run(`DELETE FROM transactions WHERE location_id = ${qMarks([id])[0]}`, [id]);
@@ -237,7 +306,7 @@ app.delete('/api/locations/:id', (req, res) => {
   });
 });
 
-app.get('/api/locations/:id/barcode.png', (req, res) => {
+app.get('/api/locations/:id/barcode.png', requireAuth, (req, res) => {
   const id = req.params.id;
   db.get(`SELECT * FROM locations WHERE id = ${qMarks([id])[0]}`, [id], (err, loc) => {
     if (err || !loc) return res.status(404).send('Not found');
@@ -262,7 +331,7 @@ app.get('/api/locations/:id/barcode.png', (req, res) => {
 });
 
 // Generate barcode PNG for a part number (can be used before part exists)
-app.get('/api/parts/:part_number/barcode.png', (req, res) => {
+app.get('/api/parts/:part_number/barcode.png', requireAuth, (req, res) => {
   const part_number = decodeURIComponent(req.params.part_number);
   if (!part_number) return res.status(400).send('part_number required');
   try {
@@ -288,7 +357,7 @@ app.get('/api/parts/:part_number/barcode.png', (req, res) => {
   }
 });
 
-app.post('/api/parts', async (req, res) => {
+app.post('/api/parts', requireAuth, async (req, res) => {
   try {
     let { part_number, description, min_qty, default_location_barcode } = req.body || {};
     if (!part_number) return res.status(400).json({ error: 'part_number required' });
@@ -324,7 +393,7 @@ app.post('/api/parts', async (req, res) => {
   }
 });
 
-app.get('/api/parts', (req, res) => {
+app.get('/api/parts', requireAuth, (req, res) => {
   const sql = `SELECT p.*, l.barcode AS default_location_barcode, l.name AS default_location_name
                FROM parts p
                LEFT JOIN locations l ON p.default_location_id = l.id`;
@@ -335,7 +404,7 @@ app.get('/api/parts', (req, res) => {
 });
 
 // Update a part
-app.put('/api/parts/:id', async (req, res) => {
+app.put('/api/parts/:id', requireAuth, async (req, res) => {
   const id = req.params.id;
   const { part_number, description, min_qty, default_location_barcode } = req.body;
   if (!part_number) return res.status(400).json({ error: 'part_number required' });
@@ -361,7 +430,7 @@ app.put('/api/parts/:id', async (req, res) => {
 });
 
 // Delete a part (and related transactions/stock)
-app.delete('/api/parts/:id', (req, res) => {
+app.delete('/api/parts/:id', requireAuth, (req, res) => {
   const id = req.params.id;
   db.serialize(() => {
   db.run(`DELETE FROM transactions WHERE part_id = ${qMarks([id])[0]}`, [id]);
@@ -373,7 +442,7 @@ app.delete('/api/parts/:id', (req, res) => {
 });
 
 // Scan endpoint - now location optional if part has fixed location
-app.post('/api/stock/scan', async (req, res) => {
+app.post('/api/stock/scan', requireAuth, async (req, res) => {
   try {
     const { location_barcode, part_number, qty, action } = req.body;
     if (!part_number || !qty || !action) return res.status(400).json({ error: 'part_number, qty and action required' });
@@ -451,13 +520,13 @@ app.post('/api/stock/scan', async (req, res) => {
 });
 
 // Debug endpoints (non-authenticated; consider protecting for production)
-app.get('/api/debug/parts', (req,res) => {
+app.get('/api/debug/parts', requireAuth, (req,res) => {
   db.all('SELECT * FROM parts', (e, rows) => {
     if (e) return res.status(500).json({ error: e.message });
     res.json(rows);
   });
 });
-app.get('/api/debug/locations', (req,res) => {
+app.get('/api/debug/locations', requireAuth, (req,res) => {
   db.all('SELECT * FROM locations', (e, rows) => {
     if (e) return res.status(500).json({ error: e.message });
     res.json(rows);
@@ -467,7 +536,7 @@ app.get('/api/debug/locations', (req,res) => {
 // /api/debug/mobile-auth removed with mobile login
 
 // Get stock for a part (includes fixed location with qty 0 if no stock yet)
-app.get('/api/stock/:part_number', async (req, res) => {
+app.get('/api/stock/:part_number', requireAuth, async (req, res) => {
   const part_number = req.params.part_number;
   const part = await getPartByNumber(part_number);
   if (!part) return res.status(404).json({ error: 'part not found' });
@@ -492,7 +561,7 @@ app.get('/api/stock/:part_number', async (req, res) => {
 });
 
 // Resolve a skannet strekkode til part_number (sjekker parts.part_number først, deretter alias i part_barcodes)
-app.get('/api/parts/resolve/:code', (req,res) => {
+app.get('/api/parts/resolve/:code', requireAuth, (req,res) => {
   const code = req.params.code.trim();
   if(!code) return res.status(400).json({ error: 'code required' });
   // First try direct match
@@ -510,7 +579,7 @@ app.get('/api/parts/resolve/:code', (req,res) => {
 });
 
 // Generic search (part_number, description, or location barcode/name)
-app.get('/api/search', async (req,res) => {
+app.get('/api/search', requireAuth, async (req,res) => {
   const term = (req.query.term || '').trim();
   if(!term) return res.json([]);
   const like = usePg ? 'ILIKE' : 'LIKE';
@@ -564,7 +633,7 @@ app.get('/api/search', async (req,res) => {
 });
 
 // Transactions log endpoint
-app.get('/api/transactions', async (req,res) => {
+app.get('/api/transactions', requireAuth, async (req,res) => {
   try {
     const partFilter = (req.query.part||'').trim();
     const locFilter = (req.query.loc||'').trim();
@@ -594,7 +663,7 @@ app.get('/api/transactions', async (req,res) => {
 });
 
 // Heuristikk-endpoint for å sjekke sannsynlig feiltolket Code128 (f.eks TAN-00623 lest som 51793111)
-app.get('/api/parts/heuristic/map/:code', (req,res)=> {
+app.get('/api/parts/heuristic/map/:code', requireAuth, (req,res)=> {
   const raw = req.params.code.trim();
   // Hvis innkoden er kun tall og ingen direkte match finnes, forsøk å finne en part med bindestrek som har tilsvarende lengde
   if(!/^[0-9]+$/.test(raw)) return res.json({ passthrough: true });
@@ -605,7 +674,7 @@ app.get('/api/parts/heuristic/map/:code', (req,res)=> {
 });
 
 // Legg til alias strekkode for del
-app.post('/api/parts/:id/barcodes', (req,res) => {
+app.post('/api/parts/:id/barcodes', requireAuth, (req,res) => {
   const id = req.params.id; const { barcode } = req.body || {};
   if(!barcode) return res.status(400).json({ error: 'barcode required' });
   const sql = `INSERT INTO part_barcodes (part_id, barcode) VALUES (${qMarks([id, barcode]).join(', ')})`;
@@ -616,7 +685,7 @@ app.post('/api/parts/:id/barcodes', (req,res) => {
 });
 
 // List alias strekkoder for del
-app.get('/api/parts/:id/barcodes', (req,res) => {
+app.get('/api/parts/:id/barcodes', requireAuth, (req,res) => {
   const id = req.params.id;
   db.all(`SELECT * FROM part_barcodes WHERE part_id = ${qMarks([id])[0]}`, [id], (e, rows) => {
     if(e) return res.status(500).json({ error: e.message });
@@ -625,7 +694,7 @@ app.get('/api/parts/:id/barcodes', (req,res) => {
 });
 
 // Slett alias
-app.delete('/api/parts/:id/barcodes/:bid', (req,res) => {
+app.delete('/api/parts/:id/barcodes/:bid', requireAuth, (req,res) => {
   const bid = req.params.bid;
   db.run(`DELETE FROM part_barcodes WHERE id = ${qMarks([bid])[0]}`, [bid], function(err){
     if(err) return res.status(500).json({ error: err.message });
@@ -634,7 +703,7 @@ app.delete('/api/parts/:id/barcodes/:bid', (req,res) => {
 });
 
 // Debug status: counts + db mode
-app.get('/api/debug/status', (req,res) => {
+app.get('/api/debug/status', requireAuth, (req,res) => {
   const status = { dbMode: usePg ? 'Postgres' : 'SQLite' };
   const queries = [
     ['parts','SELECT COUNT(*) as c FROM parts'],
@@ -652,7 +721,7 @@ app.get('/api/debug/status', (req,res) => {
 });
 
 // Debug endpoint for alert state (in-memory)
-app.get('/api/debug/alert-state', (req,res)=> {
+app.get('/api/debug/alert-state', requireAuth, (req,res)=> {
   res.json({ alertState });
 });
 
