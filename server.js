@@ -431,6 +431,19 @@ app.get('/api/stock/:part_number', async (req, res) => {
   if (!part) return res.status(404).json({ error: 'part not found' });
   db.all(`SELECT l.id as location_id, l.name as location_name, l.barcode, s.qty FROM stock s JOIN locations l ON s.location_id = l.id WHERE s.part_id = ${qMarks([part.id])[0]}`, [part.id], async (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
+    try {
+      // If part has a fixed location but no stock row yet, include it with qty 0
+      if (part.default_location_id && !rows.find(r => String(r.location_id) === String(part.default_location_id))) {
+        const loc = await new Promise((resolve, reject) => {
+          db.get(`SELECT * FROM locations WHERE id = ${qMarks([part.default_location_id])[0]}`, [part.default_location_id], (e, r) => e ? reject(e) : resolve(r));
+        });
+        if (loc) {
+          rows.push({ location_id: loc.id, location_name: loc.name, barcode: loc.barcode, qty: 0 });
+        }
+      }
+    } catch (e2) {
+      console.error('augment fixed location failed', e2.message);
+    }
     const total = await getTotalQty(part.id);
     res.json({ part, total, locations: rows });
   });
