@@ -127,6 +127,9 @@ function sendAlertEmail(part, totalQty) {
   });
 }
 
+// Alert state (in-memory). For persistens kunne dette vært egen tabell.
+const alertState = {}; // part_id -> { lastSent:number }
+
 // Manual test endpoint for alert email
 app.post('/api/debug/test-alert', async (req,res) => {
   try {
@@ -383,12 +386,13 @@ app.post('/api/stock/scan', async (req, res) => {
       const ensureSql = usePg ? 'INSERT INTO stock (part_id, location_id, qty) VALUES ($1,$2,0) ON CONFLICT (part_id, location_id) DO NOTHING' : 'INSERT OR IGNORE INTO stock (part_id, location_id, qty) VALUES (?, ?, 0)';
       db.run(ensureSql, [part.id, loc.id]);
 
+      let totalBefore = null; // total før endringen for å oppdage kryssing av min-grense
       if (action === 'in') {
         const updSql = usePg ? 'UPDATE stock SET qty = qty + $1 WHERE part_id = $2 AND location_id = $3' : 'UPDATE stock SET qty = qty + ? WHERE part_id = ? AND location_id = ?';
         db.run(updSql, [q, part.id, loc.id]);
         const totalAfter = await getTotalQty(part.id);
-        if (totalAfter <= part.min_qty) sendAlertEmail(part, totalAfter);
-        finalize();
+        totalBefore = totalAfter - q;
+        finalize(totalAfter, totalBefore);
       } else {
         const selSql = usePg ? 'SELECT qty FROM stock WHERE part_id = $1 AND location_id = $2' : 'SELECT qty FROM stock WHERE part_id = ? AND location_id = ?';
         db.get(selSql, [part.id, loc.id], async (err, row) => {
@@ -398,12 +402,27 @@ app.post('/api/stock/scan', async (req, res) => {
           const updOut = usePg ? 'UPDATE stock SET qty = qty - $1 WHERE part_id = $2 AND location_id = $3' : 'UPDATE stock SET qty = qty - ? WHERE part_id = ? AND location_id = ?';
           db.run(updOut, [q, part.id, loc.id]);
           const totalAfter = await getTotalQty(part.id);
-          if (totalAfter <= part.min_qty) sendAlertEmail(part, totalAfter);
-          finalize();
+          totalBefore = totalAfter + q;
+          finalize(totalAfter, totalBefore);
         });
       }
 
-      function finalize(){
+      function finalize(totalAfter, totalBefore){
+        // Alert: bare når vi krysser NED til <= min (ikke på INN eller ved gjentatte OUT under min)
+        try {
+          if (action === 'out' && part.min_qty > 0) {
+            const crossed = totalAfter <= part.min_qty && totalBefore > part.min_qty;
+            if (crossed) {
+              const throttleMin = parseInt(process.env.ALERT_THROTTLE_MINUTES || '30', 10);
+              const throttleMs = throttleMin * 60000;
+              const st = alertState[part.id] || {};
+              if (!st.lastSent || (Date.now() - st.lastSent) > throttleMs) {
+                sendAlertEmail(part, totalAfter);
+                alertState[part.id] = { lastSent: Date.now(), lastQty: totalAfter };
+              }
+            }
+          }
+        } catch(e){ console.error('alert logic failed', e.message); }
         const txSql = usePg ? 'INSERT INTO transactions (part_id, location_id, qty, action) VALUES ($1,$2,$3,$4)' : 'INSERT INTO transactions (part_id, location_id, qty, action) VALUES (?,?,?,?)';
         db.run(txSql, [part.id, loc.id, q, action]);
         res.json({ ok: true, part: part.part_number, location: loc.barcode, qty: q, action });
@@ -614,6 +633,11 @@ app.get('/api/debug/status', (req,res) => {
       if(--remaining===0) res.json(status);
     });
   });
+});
+
+// Debug endpoint for alert state (in-memory)
+app.get('/api/debug/alert-state', (req,res)=> {
+  res.json({ alertState });
 });
 
 app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
