@@ -49,6 +49,22 @@
     <div id="parts" class="list"></div>
   </section>
 
+  <section>
+    <h2>Transaksjonslogg</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <input id="log-filter-part" placeholder="Filter delenummer" style="flex:1;min-width:160px">
+      <input id="log-filter-loc" placeholder="Filter lokasjon" style="flex:1;min-width:160px">
+      <select id="log-limit" style="width:120px">
+        <option value="50">50</option>
+        <option value="100">100</option>
+        <option value="200">200</option>
+        <option value="500">500</option>
+      </select>
+      <button id="log-refresh" class="btn">Oppdater</button>
+    </div>
+    <div id="tx-log" class="list" style="max-height:320px;overflow:auto;border:1px solid #eee;border-radius:6px;background:#fff"></div>
+  </section>
+
   <!-- Manuell skann fjernet: all bevegelse skjer via mobil skanning -->
 
     <script src="/app.js"></script>

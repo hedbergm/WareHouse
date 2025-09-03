@@ -528,6 +528,36 @@ app.get('/api/search', async (req,res) => {
   }
 });
 
+// Transactions log endpoint
+app.get('/api/transactions', async (req,res) => {
+  try {
+    const partFilter = (req.query.part||'').trim();
+    const locFilter = (req.query.loc||'').trim();
+    let limit = parseInt(req.query.limit||'50',10); if(isNaN(limit)||limit<1) limit=50; if(limit>500) limit=500;
+    const like = usePg ? 'ILIKE' : 'LIKE';
+    const params = [];
+    function ph(){ return usePg ? '$'+(params.length+1) : '?'; }
+    let where = ' WHERE 1=1';
+    if(partFilter){ params.push('%'+partFilter+'%'); where += ` AND p.part_number ${like} ${ph()}`; }
+    if(locFilter){ params.push('%'+locFilter+'%'); where += ` AND l.barcode ${like} ${ph()}`; }
+    // Order newest first
+    const sql = `SELECT t.id, t.qty, t.action, t.created_at, p.part_number, p.description, l.barcode as location_barcode, l.name as location_name
+                 FROM transactions t
+                 JOIN parts p ON t.part_id = p.id
+                 JOIN locations l ON t.location_id = l.id
+                 ${where}
+                 ORDER BY t.created_at DESC, t.id DESC
+                 ${usePg? 'LIMIT '+( '$'+(params.length+1) ) : 'LIMIT '+ph()}`;
+    params.push(limit);
+    db.all(sql, params, (e, rows) => {
+      if(e) return res.status(500).json({ error: e.message });
+      res.json(rows);
+    });
+  } catch(e){
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Heuristikk-endpoint for å sjekke sannsynlig feiltolket Code128 (f.eks TAN-00623 lest som 51793111)
 app.get('/api/parts/heuristic/map/:code', (req,res)=> {
   const raw = req.params.code.trim();
