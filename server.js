@@ -59,15 +59,16 @@ const db = {
   serialize(fn){ if(!usePg) return dbSqlite.serialize(fn); fn(); }
 };
 
+const path = require('path');
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
 // Root should show home.html (not index.html)
-app.get('/', (req,res)=> res.sendFile(require('path').join(__dirname,'public','home.html')));
+app.get('/', (req,res)=> res.sendFile(path.join(__dirname,'public','home.html')));
 
-// Static files without automatic index so our custom '/' works
-app.use(express.static('public', { index: false }));
+// Serve static assets with absolute path to avoid issues if process cwd differs
+app.use(express.static(path.join(__dirname,'public'), { index: false }));
 
 const PORT = process.env.PORT || 3000; // ngrok fjernet
 
