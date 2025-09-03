@@ -18,7 +18,7 @@
 <body>
   <div class="screen">
     <div style="display:flex;align-items:center;gap:10px;justify-content:space-between">
-      <h2 style="margin:0">Mobil Bevegelse</h2>
+  <h2 id="page-heading" style="margin:0">Mobil Bevegelse</h2>
       <a href="/mobile-home.html" class="btn" style="text-decoration:none;font-size:13px;padding:6px 10px;background:#0b6efd;color:#fff">Forside</a>
     </div>
 
@@ -94,5 +94,19 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
   <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none" />
   <script src="/mobile.js"></script>
+  <script>
+    function applyMode(){
+      const hash = location.hash || '';
+      let mode = null;
+      if(hash.includes('mode=in')) mode='in';
+      if(hash.includes('mode=out')) mode='out';
+      const h = document.getElementById('page-heading');
+      if(mode==='in'){ h.textContent='Varemottak (INN)'; document.title='Varemottak – Mobil'; }
+      else if(mode==='out'){ h.textContent='Vareuttak (UT)'; document.title='Vareuttak – Mobil'; }
+      else { h.textContent='Mobil Bevegelse'; document.title='Mobil – Bevegelse'; }
+    }
+    window.addEventListener('hashchange', applyMode);
+    applyMode();
+  </script>
 </body>
 </html>
