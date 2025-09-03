@@ -16,11 +16,25 @@ async function main(){
   const stock = await all(sdb,'SELECT * FROM stock');
   const transactions = await all(sdb,'SELECT * FROM transactions');
   const users = await all(sdb,'SELECT * FROM users');
+  const partBarcodes = await all(sdb,'SELECT * FROM part_barcodes');
 
-  console.log('Migrating', { parts: parts.length, locations: locations.length, stock: stock.length, transactions: transactions.length, users: users.length });
+  console.log('Migrating', { parts: parts.length, locations: locations.length, stock: stock.length, transactions: transactions.length, users: users.length, part_barcodes: partBarcodes.length });
 
   for(const p of parts){
-    await pg.run('INSERT INTO parts (part_number, description, min_qty) VALUES ($1,$2,$3) ON CONFLICT (part_number) DO NOTHING', [p.part_number, p.description, p.min_qty]);
+    // Attempt to resolve default_location_id by barcode (if column exists and set)
+    let defaultLocId = null;
+    if(p.default_location_id){
+      const locRow = locations.find(l => l.id === p.default_location_id);
+      if(locRow){
+        const tgt = await pg.get('SELECT id FROM locations WHERE barcode=$1',[locRow.barcode]);
+        defaultLocId = tgt && tgt.id;
+      }
+    }
+    if(defaultLocId){
+      await pg.run('INSERT INTO parts (part_number, description, min_qty, default_location_id) VALUES ($1,$2,$3,$4) ON CONFLICT (part_number) DO UPDATE SET description=EXCLUDED.description, min_qty=EXCLUDED.min_qty, default_location_id=COALESCE(EXCLUDED.default_location_id, parts.default_location_id)', [p.part_number, p.description, p.min_qty, defaultLocId]);
+    } else {
+      await pg.run('INSERT INTO parts (part_number, description, min_qty) VALUES ($1,$2,$3) ON CONFLICT (part_number) DO UPDATE SET description=EXCLUDED.description, min_qty=EXCLUDED.min_qty', [p.part_number, p.description, p.min_qty]);
+    }
   }
   const locIdMap = {}; // map old id -> new id (need lookup by barcode)
   for(const l of locations){
@@ -49,6 +63,14 @@ async function main(){
     const pid = await getPartId(partRow.part_number); const lid = await getLocId(locRow.barcode);
     if(pid && lid){
       await pg.run('INSERT INTO transactions (part_id, location_id, qty, action, created_at) VALUES ($1,$2,$3,$4,$5)', [pid,lid,tr.qty,tr.action,tr.created_at]);
+    }
+  }
+  for(const pb of partBarcodes){
+    const partRow = await all(sdb,'SELECT part_number FROM parts WHERE id=?',[pb.part_id]).then(r=>r[0]);
+    if(!partRow) continue;
+    const pid = await getPartId(partRow.part_number);
+    if(pid){
+      await pg.run('INSERT INTO part_barcodes (part_id, barcode) VALUES ($1,$2) ON CONFLICT (barcode) DO NOTHING',[pid, pb.barcode]);
     }
   }
   for(const u of users){

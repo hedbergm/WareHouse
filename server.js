@@ -9,7 +9,11 @@ const pgdb = require('./pgdb');
 const usePg = pgdb.enabled();
 console.log('[DB MODE]', usePg ? 'Postgres' : 'SQLite');
 if(!usePg){
-  console.warn('[WARN] Kjører med SQLite fallback. Data lagres i lokal fil og forsvinner ved ny container/deploy i host (Render). Sett Postgres env-variabler (PGHOST, PGUSER, PGPASSWORD, PGDATABASE, PGPORT) for å bevare data.');
+  console.warn('[WARN] Kjører med SQLite fallback. Data lagres i lokal fil og kan forsvinne ved ny container/deploy. Sett Postgres env-variabler (PGHOST, PGUSER, PGPASSWORD, PGDATABASE, PGPORT) for å bevare data.');
+  if(process.env.NODE_ENV === 'production' && !process.env.ALLOW_SQLITE_PROD){
+    console.error('[FATAL] NODE_ENV=production uten Postgres-konfig. Sett ALLOW_SQLITE_PROD=1 for å override (ikke anbefalt). Avslutter.');
+    process.exit(1);
+  }
 }
 
 // Ensure Postgres schema exists (idempotent) so redeploys don't show "missing" data due to absent tables

@@ -10,6 +10,7 @@
   <div class="container">
     <h1>Part Store</h1>
     <p><a class="muted-link" href="/home.html" style="font-size:14px">← Til Hjem / Oversikt</a></p>
+  <div id="db-banner" style="display:none;margin:-4px 0 14px 0;padding:10px 14px;border:1px solid #e2e2e2;border-left:4px solid #ff9800;background:#fff8e6;border-radius:6px;font-size:13px;color:#5a4100"></div>
 
   <section>
     <h2>Registrer lokasjon</h2>
@@ -51,6 +52,13 @@
   <!-- Manuell skann fjernet: all bevegelse skjer via mobil skanning -->
 
     <script src="/app.js"></script>
+    <script>
+      fetch('/api/debug/status').then(r=> r.ok ? r.json():null).then(s=>{
+        if(!s) return; const b=document.getElementById('db-banner'); if(!b) return;
+        if(s.dbMode==='SQLite'){ b.style.display='block'; b.innerHTML='Database-modus: <strong>SQLite (midlertidig)</strong>. Data kan forsvinne ved redeploy. Sett opp Postgres for permanent lagring.'; }
+        else { b.style.display='block'; b.style.background='#eef9f1'; b.style.borderLeftColor='#2e7d32'; b.style.color='#1b4d21'; b.innerHTML='Database-modus: <strong>Postgres</strong>. Parts: '+s.parts+' · Lokasjoner: '+s.locations+' · Beholdning rader: '+s.stock; }
+      }).catch(()=>{});
+    </script>
   </div>
 </body>
 </html>
