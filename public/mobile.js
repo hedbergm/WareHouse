@@ -47,6 +47,23 @@ const testCamBtn = document.getElementById('test-camera');
 const photoBtn = document.getElementById('photo-scan');
 const photoInput = document.getElementById('photo-input');
 
+// Bevegelsesmodus: tving INN eller UT hvis hash inneholder mode=in / mode=out
+function resolveMovementMode(){
+  const h = (location.hash||'').toLowerCase();
+  if(h.includes('mode=out')) return 'out';
+  if(h.includes('mode=in')) return 'in';
+  return null;
+}
+let movementMode = resolveMovementMode();
+window.addEventListener('hashchange', ()=> {
+  movementMode = resolveMovementMode();
+  // Hvis panel er åpent, oppdater valgt og disable state
+  if(!movementPanel.classList.contains('hidden')){
+    if(movementMode){ mvAction.value = movementMode; mvAction.disabled = true; }
+    else { mvAction.disabled = false; }
+  }
+});
+
 function dlog(msg){
   if(!debugLog) return; const ts = new Date().toISOString().substr(11,8);
   debugLog.textContent += `[${ts}] ${msg}\n`;
@@ -189,7 +206,13 @@ async function handleScan(code){
   lastScan.innerText = 'Del: '+code;
   mvPart.value = code;
   mvQty.value = 1;
-  mvAction.value = 'in';
+  if(movementMode){
+    mvAction.value = movementMode;
+    mvAction.disabled = true;
+  } else {
+    mvAction.value = 'in';
+    mvAction.disabled = false;
+  }
   movementPanel.classList.remove('hidden');
   mvMessage.textContent = '';
 }
@@ -198,14 +221,16 @@ async function handleScan(code){
 document.getElementById('manual-add').addEventListener('click', () => {
   const pn = prompt('Delenummer'); if(!pn) return;
   mvPart.value = pn.trim();
-  mvQty.value = 1; mvAction.value='in'; movementPanel.classList.remove('hidden'); mvMessage.textContent='';
+  mvQty.value = 1;
+  if(movementMode){ mvAction.value = movementMode; mvAction.disabled = true; } else { mvAction.value='in'; mvAction.disabled=false; }
+  movementPanel.classList.remove('hidden'); mvMessage.textContent='';
 });
 
 mvCancel.addEventListener('click', ()=> { movementPanel.classList.add('hidden'); });
 mvSubmit.addEventListener('click', async () => {
   const part = mvPart.value.trim();
   const qty = parseInt(mvQty.value||'0',10);
-  const action = mvAction.value;
+  const action = movementMode || mvAction.value; // tvang om satt
   if(!part || !qty){ mvMessage.textContent='Mangler felt'; return; }
   mvSubmit.disabled=true;
   try {
