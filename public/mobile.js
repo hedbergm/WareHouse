@@ -41,6 +41,7 @@ const mvAction = document.getElementById('mv-action');
 const mvSubmit = document.getElementById('mv-submit');
 const mvCancel = document.getElementById('mv-cancel');
 const mvMessage = document.getElementById('mv-message');
+const mvInfo = document.getElementById('mv-info');
 const debugBtn = document.getElementById('toggle-debug');
 const debugLog = document.getElementById('debug-log');
 const testCamBtn = document.getElementById('test-camera');
@@ -215,6 +216,19 @@ async function handleScan(code){
   }
   movementPanel.classList.remove('hidden');
   mvMessage.textContent = '';
+  mvInfo.style.display='none'; mvInfo.textContent='';
+  // Hent delinfo (lager + min + beskrivelse)
+  try {
+    const data = await api('/api/stock/'+encodeURIComponent(code));
+    const part = data.part || {}; const total = data.total || 0;
+    const minq = part.min_qty ?? 0;
+    const desc = part.description || '';
+    const locLines = (data.locations||[]).map(l=> `${l.location_name||''} (${l.barcode}) ${l.qty}`).join(' · ');
+    mvInfo.innerHTML = `<strong>${part.part_number||code}</strong>${desc? ' – '+desc:''}<br>Totalt: <strong>${total}</strong>  Min: <strong>${minq}</strong>${locLines? '<br>'+locLines:''}`;
+    mvInfo.style.display='block';
+  } catch(e){
+    mvInfo.style.display='block'; mvInfo.innerHTML='<span style="color:#c00">Fant ikke del i systemet (opprettes ved lagring om deler lages et annet sted)</span>';
+  }
 }
 
 // handle manual add
@@ -224,6 +238,7 @@ document.getElementById('manual-add').addEventListener('click', () => {
   mvQty.value = 1;
   if(movementMode){ mvAction.value = movementMode; mvAction.disabled = true; } else { mvAction.value='in'; mvAction.disabled=false; }
   movementPanel.classList.remove('hidden'); mvMessage.textContent='';
+  mvInfo.style.display='none'; mvInfo.textContent='';
 });
 
 mvCancel.addEventListener('click', ()=> { movementPanel.classList.add('hidden'); });
