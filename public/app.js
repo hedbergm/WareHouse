@@ -130,13 +130,11 @@ document.getElementById('add-part').addEventListener('click', async () => {
 
 // (Live barcode preview while typing removed per request)
 
-document.getElementById('scan-in').addEventListener('click', async () => {
-  await doScan('in');
-});
-
-document.getElementById('scan-out').addEventListener('click', async () => {
-  await doScan('out');
-});
+// Scan-knapper finnes ikke lenger etter at manuell skann ble fjernet – guard så scriptet ikke krasjer
+const btnScanIn = document.getElementById('scan-in');
+if (btnScanIn) btnScanIn.addEventListener('click', async () => { await doScan('in'); });
+const btnScanOut = document.getElementById('scan-out');
+if (btnScanOut) btnScanOut.addEventListener('click', async () => { await doScan('out'); });
 
 async function doScan(action) {
   const location_barcode = document.getElementById('scan-location').value.trim();
