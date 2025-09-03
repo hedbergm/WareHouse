@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS users( id SERIAL PRIMARY KEY, username TEXT UNIQUE NO
 CREATE TABLE IF NOT EXISTS part_barcodes( id SERIAL PRIMARY KEY, part_id INTEGER NOT NULL REFERENCES parts(id) ON DELETE CASCADE, barcode TEXT UNIQUE NOT NULL );`;
       for (const stmt of ddl.split(/;\s*/)) { if (stmt.trim()) await pgdb.run(stmt); }
       await pgdb.run('ALTER TABLE parts ADD COLUMN IF NOT EXISTS default_location_id INTEGER REFERENCES locations(id)');
+  await pgdb.run('ALTER TABLE transactions ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id)');
       console.log('[PG] Schema ensured at startup (default_location_id)');
     } catch (e) {
       console.error('[PG] Failed ensuring schema', e.message);
@@ -40,6 +41,12 @@ CREATE TABLE IF NOT EXISTS part_barcodes( id SERIAL PRIMARY KEY, part_id INTEGER
   dbSqlite.all('PRAGMA table_info(parts)', [], (err, rows) => {
     if (!err && rows && !rows.find(r => r.name === 'default_location_id')) {
       dbSqlite.run('ALTER TABLE parts ADD COLUMN default_location_id INTEGER', [], e => { if(e) console.log('SQLite alter parts add default_location_id failed:', e.message); });
+    }
+  });
+  // Add user_id to transactions if missing (SQLite)
+  dbSqlite.all('PRAGMA table_info(transactions)', [], (err, rows) => {
+    if(!err && rows && !rows.find(r => r.name === 'user_id')){
+      dbSqlite.run('ALTER TABLE transactions ADD COLUMN user_id INTEGER', [], e => { if(e) console.log('SQLite alter transactions add user_id failed:', e.message); });
     }
   });
 }
@@ -467,7 +474,8 @@ app.post('/api/stock/scan', requireAuth, async (req, res) => {
       if(!loc) return res.status(400).json({ error: 'fixed location missing' });
     }
 
-    db.serialize(async () => {
+  const userId = req.session && req.session.user ? req.session.user.id : null;
+  db.serialize(async () => {
       const ensureSql = usePg ? 'INSERT INTO stock (part_id, location_id, qty) VALUES ($1,$2,0) ON CONFLICT (part_id, location_id) DO NOTHING' : 'INSERT OR IGNORE INTO stock (part_id, location_id, qty) VALUES (?, ?, 0)';
       db.run(ensureSql, [part.id, loc.id]);
 
@@ -492,7 +500,7 @@ app.post('/api/stock/scan', requireAuth, async (req, res) => {
         });
       }
 
-      function finalize(totalAfter, totalBefore){
+  function finalize(totalAfter, totalBefore){
         // Alert: bare når vi krysser NED til <= min (ikke på INN eller ved gjentatte OUT under min)
         try {
           if (action === 'out' && part.min_qty > 0) {
@@ -508,8 +516,10 @@ app.post('/api/stock/scan', requireAuth, async (req, res) => {
             }
           }
         } catch(e){ console.error('alert logic failed', e.message); }
-        const txSql = usePg ? 'INSERT INTO transactions (part_id, location_id, qty, action) VALUES ($1,$2,$3,$4)' : 'INSERT INTO transactions (part_id, location_id, qty, action) VALUES (?,?,?,?)';
-        db.run(txSql, [part.id, loc.id, q, action]);
+        const txSql = usePg
+          ? 'INSERT INTO transactions (part_id, location_id, qty, action, user_id) VALUES ($1,$2,$3,$4,$5)'
+          : 'INSERT INTO transactions (part_id, location_id, qty, action, user_id) VALUES (?,?,?,?,?)';
+        db.run(txSql, [part.id, loc.id, q, action, userId]);
         res.json({ ok: true, part: part.part_number, location: loc.barcode, qty: q, action });
       }
     });
@@ -645,10 +655,11 @@ app.get('/api/transactions', requireAuth, async (req,res) => {
     if(partFilter){ params.push('%'+partFilter+'%'); where += ` AND p.part_number ${like} ${ph()}`; }
     if(locFilter){ params.push('%'+locFilter+'%'); where += ` AND l.barcode ${like} ${ph()}`; }
     // Order newest first
-    const sql = `SELECT t.id, t.qty, t.action, t.created_at, p.part_number, p.description, l.barcode as location_barcode, l.name as location_name
-                 FROM transactions t
-                 JOIN parts p ON t.part_id = p.id
-                 JOIN locations l ON t.location_id = l.id
+  const sql = `SELECT t.id, t.qty, t.action, t.created_at, t.user_id, u.username, p.part_number, p.description, l.barcode as location_barcode, l.name as location_name
+         FROM transactions t
+         JOIN parts p ON t.part_id = p.id
+         JOIN locations l ON t.location_id = l.id
+         LEFT JOIN users u ON t.user_id = u.id
                  ${where}
                  ORDER BY t.created_at DESC, t.id DESC
                  ${usePg? 'LIMIT '+( '$'+(params.length+1) ) : 'LIMIT '+ph()}`;
