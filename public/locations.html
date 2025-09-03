@@ -1,0 +1,84 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Lokasjoner – WareHouse</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    body{max-width:1080px;margin:0 auto;padding:24px;background:var(--bg)}
+    .muted{color:#666;font-size:12px}
+    .loc-list-row{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-top:1px solid #f1f1f1}
+  </style>
+</head>
+<body>
+  <header class="portal-header" style="align-items:center">
+    <img src="/Holship_logo.png" alt="Logo" style="height:54px;object-fit:contain;display:block">
+  </header>
+  <nav class="portal-nav">
+    <a href="/home.html">Hjem</a>
+    <a href="/index.html">Part Store</a>
+    <a href="/locations.html" class="active">Lokasjoner</a>
+    <a href="/location-barcodes.html">Lokasjonsstrekkoder</a>
+  </nav>
+
+  <section>
+    <h2 style="margin-top:0">Administrer lokasjoner</h2>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+      <input id="loc-name" placeholder="Navn" style="flex:1;min-width:160px">
+      <input id="loc-barcode" placeholder="Barcode (f.eks LOC-A1)" style="flex:1;min-width:160px">
+      <button id="add-loc" class="btn" type="button">Legg til</button>
+    </div>
+    <div id="locations" class="list" style="margin-top:8px"></div>
+  </section>
+
+  <section>
+    <h3 style="margin-top:0">Info</h3>
+    <p class="muted" style="margin-top:4px">Lokasjoner som slettes fjerner også tilhørende beholdning og transaksjoner for den lokasjonen.</p>
+  </section>
+
+  <script>
+  async function api(path, method='GET', body){
+    const opts={method,headers:{}}; if(body){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(body);} const r=await fetch(path,opts); if(!r.ok) throw await r.json(); return r.json(); }
+
+  async function load(){
+    const locs = await api('/api/locations').catch(()=>[]);
+    const wrap = document.getElementById('locations');
+    if(!locs.length){ wrap.innerHTML='<div style="padding:6px 4px;font-size:13px;color:#555">Ingen lokasjoner</div>'; return; }
+    wrap.innerHTML = locs.map(l => `
+      <div class="loc-list-row" data-id="${l.id}">
+        <div style="display:flex;align-items:center;gap:10px">
+          <img src="/api/locations/${l.id}/barcode.png" alt="${l.barcode}" style="height:40px;background:#fff;padding:4px;border:1px solid #eee;border-radius:4px">
+          <div>
+            <div><strong>${l.name}</strong></div>
+            <div style="font-size:11px;color:#666">${l.barcode}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn small edit" data-id="${l.id}">Endre</button>
+          <button class="btn small danger del" data-id="${l.id}">Slett</button>
+        </div>
+      </div>`).join('');
+
+    wrap.querySelectorAll('.del').forEach(b => b.addEventListener('click', async e => {
+      const id = e.currentTarget.dataset.id; if(!confirm('Slette lokasjon? Dette fjerner også beholdning på den.')) return; try{ await api('/api/locations/'+id,'DELETE'); load(); } catch(err){ alert(err.error||'Feil'); }
+    }));
+    wrap.querySelectorAll('.edit').forEach(b => b.addEventListener('click', async e => {
+      const id = e.currentTarget.dataset.id; const row = b.closest('.loc-list-row');
+      const newName = prompt('Nytt navn', row.querySelector('strong').innerText)||'';
+      const newBc = prompt('Ny barcode', row.querySelector('div div:nth-child(2)').innerText)||'';
+      if(!newName.trim()||!newBc.trim()) return; try { await api('/api/locations/'+id,'PUT',{ name:newName.trim(), barcode:newBc.trim()}); load(); } catch(err){ alert(err.error||'Feil'); }
+    }));
+  }
+
+  document.getElementById('add-loc').addEventListener('click', async () => {
+    const name=document.getElementById('loc-name').value.trim();
+    const bc=document.getElementById('loc-barcode').value.trim();
+    if(!name||!bc) return alert('Navn og barcode kreves');
+    try { await api('/api/locations','POST',{ name, barcode:bc }); document.getElementById('loc-name').value=''; document.getElementById('loc-barcode').value=''; load(); } catch(err){ alert(err.error||'Feil'); }
+  });
+
+  load();
+  </script>
+</body>
+</html>

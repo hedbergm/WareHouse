@@ -65,45 +65,13 @@ async function refresh() {
   }));
 
   const locs = await api('/api/locations').catch(()=>[]);
-  const locDiv = document.getElementById('locations');
-  // Populate dropdown for fixed location selection
+  // Populate dropdown for fixed location selection only
   const ddl = document.getElementById('part-default-loc');
   if (ddl) {
-    const current = ddl.value; // preserve selection if possible
+    const current = ddl.value;
     ddl.innerHTML = '<option value="">(Ingen fast lokasjon)</option>' + locs.map(l => `<option value="${l.barcode}">${l.name} (${l.barcode})</option>`).join('');
     if (current && [...ddl.options].some(o => o.value === current)) ddl.value = current;
   }
-  locDiv.innerHTML = '<p style="margin:4px 0 10px"><a href="/location-barcodes.html" class="muted-link" style="font-size:12px">Utskrift av alle strekkoder →</a></p>' +
-    locs.map(l => `
-    <div class="loc-row" data-id="${l.id}">
-      <div class="loc-left" style="display:flex;align-items:center;gap:10px">
-        <img src="/api/locations/${l.id}/barcode.png" alt="${l.barcode}" style="height:46px;background:#fff;padding:4px;border:1px solid #eee;border-radius:4px">
-        <div>
-          <div><strong>${l.name}</strong></div>
-          <div style="font-size:11px;color:#666">${l.barcode}</div>
-        </div>
-      </div>
-      <div class="loc-right">
-        <button class="edit-loc btn small" data-id="${l.id}">Endre</button>
-        <button class="delete-loc btn small danger" data-id="${l.id}">Slett</button>
-      </div>
-    </div>
-  `).join('');
-
-  document.querySelectorAll('.delete-loc').forEach(b => b.addEventListener('click', async (e) => {
-    const id = e.currentTarget.dataset.id;
-    if (!confirm('Slette denne lokasjonen? Dette fjerner også tilhørende beholdning.')) return;
-    await api(`/api/locations/${id}`, 'DELETE').catch(err => alert(JSON.stringify(err)));
-    await refresh();
-  }));
-  document.querySelectorAll('.edit-loc').forEach(b => b.addEventListener('click', async (e) => {
-    const id = e.currentTarget.dataset.id;
-    const name = prompt('Nytt navn', '') || '';
-    const barcode = prompt('Ny barcode', '') || '';
-    if (!name || !barcode) return alert('Navn og barcode kreves');
-    await api(`/api/locations/${id}`, 'PUT', { name: name.trim(), barcode: barcode.trim() }).catch(err => alert(JSON.stringify(err)));
-    await refresh();
-  }));
 
   // Oppdater transaksjonslogg etter at deler/lokasjoner er endret
   await refreshLog(false);
@@ -111,14 +79,7 @@ async function refresh() {
 
 // Dynamic injection fallback no longer needed (dropdown shipped in HTML)
 
-document.getElementById('add-loc').addEventListener('click', async () => {
-  const name = document.getElementById('loc-name').value.trim();
-  const barcode = document.getElementById('loc-barcode').value.trim();
-  if (!name || !barcode) return alert('navn og barcode kreves');
-  await api('/api/locations', 'POST', { name, barcode }).catch(e => alert(JSON.stringify(e)));
-  document.getElementById('loc-name').value=''; document.getElementById('loc-barcode').value='';
-  await refresh();
-});
+// Lokasjons-CRUD fjernet fra denne siden
 
 document.getElementById('add-part').addEventListener('click', async () => {
   const part_number = document.getElementById('part-number').value.trim();
