@@ -93,28 +93,19 @@ if(photoBtn && photoInput){
 }
 
 let scanning = false;
-let scanMode = null; // 'loc' | 'part'
+let scanMode = null; // only 'part'
 let currentLoc = null;
 
-// Directly load locations now that login is removed
-loadLocations();
-
-async function loadLocations() {
-  const locs = await api('/api/locations').catch(()=>[]);
-  locSelect.innerHTML = '<option value="">Velg lokasjon</option>' + locs.map(l => `<option value="${l.barcode}">${l.name} (${l.barcode})</option>`).join('');
-}
-
-scanLocBtn.addEventListener('click', () => startScan('loc'));
+// Location selection removed; start part scanning directly
 scanPartBtn.addEventListener('click', () => startScan('part'));
-if(viewLocBtn){ viewLocBtn.addEventListener('click', () => { if(!locSelect.value){ locContents.textContent='Ingen lokasjon valgt'; return;} loadLocationContents(locSelect.value); }); }
 stopBtn.addEventListener('click', () => stopCameraScanner());
 
 function startScan(mode){
   if(scanning) return;
   scanMode = mode;
-  scanStatus.innerText = mode === 'loc' ? 'Skanner lokasjon...' : 'Skanner del...';
-  videoEl.classList.remove('scanning-loc','scanning-part');
-  videoEl.classList.add(mode==='loc'?'scanning-loc':'scanning-part');
+  scanStatus.innerText = 'Skanner del...';
+  videoEl.classList.remove('scanning-part');
+  videoEl.classList.add('scanning-part');
   startCameraScanner();
 }
 
@@ -164,7 +155,7 @@ function startCameraScanner(){
       scanning=false; stopBtn.disabled=true; return;
     }
     Quagga.start();
-    scanStatus.innerText = scanMode === 'loc' ? 'Skann en lokasjon strekkode' : 'Skann en del strekkode';
+  scanStatus.innerText = 'Skann en del strekkode';
     dlog('Quagga startet');
   });
   }).catch(e => {
@@ -189,23 +180,13 @@ function startCameraScanner(){
 function stopCameraScanner(){
   if(!scanning) return;
   scanning=false; Quagga.stop(); scanStatus.innerText='Stoppet'; stopBtn.disabled=true; if(!videoEl.hasChildNodes()) videoEl.textContent='Ingen aktiv skann';
-  videoEl.classList.remove('scanning-loc','scanning-part');
+  videoEl.classList.remove('scanning-part');
 }
 
 async function handleScan(code){
   const mode = scanMode; // capture before stopping (stop clears state UI-wise)
   stopCameraScanner();
-  lastScan.innerText = (mode==='loc'?'Lokasjon: ':'Del: ')+code;
-  if(mode==='loc'){
-    const opt = Array.from(locSelect.options).find(o=> o.value===code || o.text.includes(code));
-  if(opt){ locSelect.value=opt.value; scanStatus.innerText='Lokasjon valgt'; loadLocationContents(locSelect.value); return; }
-  // create new location quickly
-  try { await api('/api/locations','POST',{ name: code, barcode: code }); await loadLocations(); locSelect.value=code; scanStatus.innerText='Lokasjon opprettet'; loadLocationContents(locSelect.value); }
-  catch(e){ scanStatus.innerText='Feil lokasjon'; }
-    return;
-  }
-  // part scan
-  if(!locSelect.value){ scanStatus.innerText='Velg / skann lokasjon først'; return; }
+  lastScan.innerText = 'Del: '+code;
   mvPart.value = code;
   mvQty.value = 1;
   mvAction.value = 'in';
@@ -215,7 +196,6 @@ async function handleScan(code){
 
 // handle manual add
 document.getElementById('manual-add').addEventListener('click', () => {
-  if(!locSelect.value){ alert('Velg lokasjon først'); return; }
   const pn = prompt('Delenummer'); if(!pn) return;
   mvPart.value = pn.trim();
   mvQty.value = 1; mvAction.value='in'; movementPanel.classList.remove('hidden'); mvMessage.textContent='';
@@ -226,24 +206,14 @@ mvSubmit.addEventListener('click', async () => {
   const part = mvPart.value.trim();
   const qty = parseInt(mvQty.value||'0',10);
   const action = mvAction.value;
-  if(!part || !qty || !locSelect.value){ mvMessage.textContent='Mangler felt'; return; }
+  if(!part || !qty){ mvMessage.textContent='Mangler felt'; return; }
   mvSubmit.disabled=true;
   try {
-    await api('/api/stock/scan','POST',{ location_barcode: locSelect.value, part_number: part, qty, action });
-    mvMessage.textContent='Lagret'; movementPanel.classList.add('hidden'); loadLocationContents(locSelect.value);
+  await api('/api/stock/scan','POST',{ part_number: part, qty, action });
+  mvMessage.textContent='Lagret'; movementPanel.classList.add('hidden');
   } catch(e){ mvMessage.textContent='Feil: '+ (e.error||''); }
   finally { mvSubmit.disabled=false; }
 });
 
-async function loadLocationContents(barcode){
-  locContents.textContent='Laster...';
-  try {
-    const data = await api('/api/locations/'+encodeURIComponent(barcode)+'/stock');
-    if(!data.items.length){ locContents.textContent='Ingen deler her'; return; }
-    locContents.innerHTML = data.items.map(i => `${i.part_number} – <strong>${i.qty}</strong>`).join('<br>');
-  } catch(e){ locContents.textContent='Feil ved lasting'; }
-}
-
-// Update contents when user changes selection manually
-locSelect.addEventListener('change', () => { if(locSelect.value) loadLocationContents(locSelect.value); else locContents.textContent='Ingen lokasjon valgt'; });
+// loadLocationContents removed (fast lokasjon håndteres server-side)
 

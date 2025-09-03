@@ -346,26 +346,33 @@ app.delete('/api/parts/:id', (req, res) => {
   });
 });
 
-// Scan endpoint - scan a location barcode, provide part_number, qty and action (in/out)
+// Scan endpoint - now location optional if part has fixed location
 app.post('/api/stock/scan', async (req, res) => {
   try {
     const { location_barcode, part_number, qty, action } = req.body;
-    if (!location_barcode || !part_number || !qty || !action) return res.status(400).json({ error: 'location_barcode, part_number, qty and action required' });
+    if (!part_number || !qty || !action) return res.status(400).json({ error: 'part_number, qty and action required' });
     const q = parseInt(qty, 10);
     if (isNaN(q) || q <= 0) return res.status(400).json({ error: 'qty must be a positive integer' });
     if (!['in', 'out'].includes(action)) return res.status(400).json({ error: 'action must be "in" or "out"' });
 
     const part = await getPartByNumber(part_number);
     if (!part) return res.status(404).json({ error: 'part not found' });
-    const loc = await getLocationByBarcode(location_barcode);
-    if (!loc) return res.status(404).json({ error: 'location not found' });
 
-    if (part.default_location_id && String(part.default_location_id) !== String(loc.id)) {
-      return res.status(400).json({ error: 'part has fixed location' });
+    let loc = null;
+    if (location_barcode) {
+      loc = await getLocationByBarcode(location_barcode);
+      if (!loc) return res.status(404).json({ error: 'location not found' });
+      if (part.default_location_id && String(part.default_location_id) !== String(loc.id)) {
+        return res.status(400).json({ error: 'part has fixed location' });
+      }
+    } else {
+      // infer from fixed location
+      if (!part.default_location_id) return res.status(400).json({ error: 'location required (part has no fixed location)' });
+      loc = await new Promise((resolve, reject) => db.get(`SELECT * FROM locations WHERE id = ${qMarks([part.default_location_id])[0]}`, [part.default_location_id], (e,r)=> e?reject(e):resolve(r)));
+      if(!loc) return res.status(400).json({ error: 'fixed location missing' });
     }
 
     db.serialize(async () => {
-      // Ensure stock row exists (qty=0 if new)
       const ensureSql = usePg ? 'INSERT INTO stock (part_id, location_id, qty) VALUES ($1,$2,0) ON CONFLICT (part_id, location_id) DO NOTHING' : 'INSERT OR IGNORE INTO stock (part_id, location_id, qty) VALUES (?, ?, 0)';
       db.run(ensureSql, [part.id, loc.id]);
 
@@ -373,26 +380,18 @@ app.post('/api/stock/scan', async (req, res) => {
         const updSql = usePg ? 'UPDATE stock SET qty = qty + $1 WHERE part_id = $2 AND location_id = $3' : 'UPDATE stock SET qty = qty + ? WHERE part_id = ? AND location_id = ?';
         db.run(updSql, [q, part.id, loc.id]);
         const totalAfter = await getTotalQty(part.id);
-        console.log('[ALERT CHECK][IN]', { part: part.part_number, totalAfter, min: part.min_qty });
-        if (totalAfter <= part.min_qty) {
-          console.log('[ALERT TRIGGER][IN]', part.part_number, totalAfter, '<= min', part.min_qty);
-          sendAlertEmail(part, totalAfter);
-        }
+        if (totalAfter <= part.min_qty) sendAlertEmail(part, totalAfter);
         finalize();
       } else {
         const selSql = usePg ? 'SELECT qty FROM stock WHERE part_id = $1 AND location_id = $2' : 'SELECT qty FROM stock WHERE part_id = ? AND location_id = ?';
         db.get(selSql, [part.id, loc.id], async (err, row) => {
           if (err) return res.status(500).json({ error: err.message });
           const available = row ? row.qty : 0;
-            if (available < q) return res.status(400).json({ error: `Not enough stock at location (available ${available})` });
+          if (available < q) return res.status(400).json({ error: `Not enough stock at location (available ${available})` });
           const updOut = usePg ? 'UPDATE stock SET qty = qty - $1 WHERE part_id = $2 AND location_id = $3' : 'UPDATE stock SET qty = qty - ? WHERE part_id = ? AND location_id = ?';
           db.run(updOut, [q, part.id, loc.id]);
           const totalAfter = await getTotalQty(part.id);
-          console.log('[ALERT CHECK][OUT]', { part: part.part_number, totalAfter, min: part.min_qty });
-          if (totalAfter <= part.min_qty) {
-            console.log('[ALERT TRIGGER][OUT]', part.part_number, totalAfter, '<= min', part.min_qty);
-            sendAlertEmail(part, totalAfter);
-          }
+          if (totalAfter <= part.min_qty) sendAlertEmail(part, totalAfter);
           finalize();
         });
       }
@@ -400,11 +399,9 @@ app.post('/api/stock/scan', async (req, res) => {
       function finalize(){
         const txSql = usePg ? 'INSERT INTO transactions (part_id, location_id, qty, action) VALUES ($1,$2,$3,$4)' : 'INSERT INTO transactions (part_id, location_id, qty, action) VALUES (?,?,?,?)';
         db.run(txSql, [part.id, loc.id, q, action]);
-        console.log('[STOCK SCAN]', { part: part.part_number, location: loc.barcode, action, qty: q });
         res.json({ ok: true, part: part.part_number, location: loc.barcode, qty: q, action });
       }
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'server error' });
