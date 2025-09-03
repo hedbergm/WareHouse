@@ -121,23 +121,26 @@ let logTimer = null;
 async function refreshLog(showLoading=true){
   const partF = document.getElementById('log-filter-part');
   const locF = document.getElementById('log-filter-loc');
+  const userF = document.getElementById('log-filter-user');
   const limitSel = document.getElementById('log-limit');
   const out = document.getElementById('tx-log');
   if(!out) return; // section not present
   const params = new URLSearchParams();
   if(partF && partF.value.trim()) params.set('part', partF.value.trim());
   if(locF && locF.value.trim()) params.set('loc', locF.value.trim());
+  if(userF && userF.value.trim()) params.set('user', userF.value.trim());
   if(limitSel) params.set('limit', limitSel.value);
   if(showLoading) out.innerHTML='<div style="padding:8px;font-size:12px;color:#555">Laster…</div>';
   try {
     const rows = await api('/api/transactions?'+params.toString());
     if(!rows.length){ out.innerHTML='<div style="padding:8px;font-size:12px;color:#777">Ingen transaksjoner</div>'; return; }
-    out.innerHTML = rows.map(r => {
+  out.innerHTML = rows.map(r => {
       const ts = r.created_at ? r.created_at.replace('T',' ').substring(0,19) : '';
       const dir = r.action === 'in' ? '<span style="color:#14763d;font-weight:600">+ '+r.qty+'</span>' : '<span style="color:#b32020;font-weight:600">- '+r.qty+'</span>';
       return `<div style="display:flex;flex-direction:column;padding:6px 10px;border-top:1px solid #f1f1f1;font-size:12px">
-        <div style="display:flex;justify-content:space-between;gap:8px"><strong>${r.part_number}</strong><span>${ts}</span></div>
-        <div style="display:flex;justify-content:space-between;gap:8px">${dir}<span>${r.location_name||''} (${r.location_barcode})</span></div>
+    <div style="display:flex;justify-content:space-between;gap:8px"><strong>${r.part_number}</strong><span>${ts}</span></div>
+    <div style="display:flex;justify-content:space-between;gap:8px">${dir}<span>${r.location_name||''} (${r.location_barcode})</span></div>
+    <div style="display:flex;justify-content:space-between;gap:8px;color:#444"><span style="font-size:11px">${r.username ? 'Av: '+r.username : ''}</span></div>
         <div style="color:#555">${r.description||''}</div>
       </div>`;
     }).join('');
@@ -146,7 +149,7 @@ async function refreshLog(showLoading=true){
 
 const logRefreshBtn = document.getElementById('log-refresh');
 if(logRefreshBtn){ logRefreshBtn.addEventListener('click', ()=> refreshLog(true)); }
-['log-filter-part','log-filter-loc','log-limit'].forEach(id => {
+['log-filter-part','log-filter-loc','log-filter-user','log-limit'].forEach(id => {
   const el = document.getElementById(id); if(el){ el.addEventListener('input', ()=> { clearTimeout(logTimer); logTimer=setTimeout(()=> refreshLog(true), 400); }); }
 });
 

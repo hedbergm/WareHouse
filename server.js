@@ -648,13 +648,15 @@ app.get('/api/transactions', requireAuth, async (req,res) => {
   try {
     const partFilter = (req.query.part||'').trim();
     const locFilter = (req.query.loc||'').trim();
+  const userFilter = (req.query.user||'').trim();
     let limit = parseInt(req.query.limit||'50',10); if(isNaN(limit)||limit<1) limit=50; if(limit>500) limit=500;
     const like = usePg ? 'ILIKE' : 'LIKE';
     const params = [];
     function ph(){ return usePg ? '$'+(params.length+1) : '?'; }
     let where = ' WHERE 1=1';
     if(partFilter){ params.push('%'+partFilter+'%'); where += ` AND p.part_number ${like} ${ph()}`; }
-    if(locFilter){ params.push('%'+locFilter+'%'); where += ` AND l.barcode ${like} ${ph()}`; }
+  if(locFilter){ params.push('%'+locFilter+'%'); where += ` AND l.barcode ${like} ${ph()}`; }
+  if(userFilter){ params.push('%'+userFilter+'%'); where += ` AND u.username ${like} ${ph()}`; }
     // Order newest first
   const sql = `SELECT t.id, t.qty, t.action, t.created_at, t.user_id, u.username, p.part_number, p.description, l.barcode as location_barcode, l.name as location_name
          FROM transactions t
