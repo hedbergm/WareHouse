@@ -83,7 +83,8 @@ app.use(session({
 function requireAuth(req,res,next){
   if(req.session && req.session.user) return next();
   if(req.path.startsWith('/api/')) return res.status(401).json({ error: 'unauthorized' });
-  return res.redirect('/login.html');
+  const wantsMobile = req.path.startsWith('/mobile');
+  return res.redirect(wantsMobile ? '/mobile-login.html' : '/login.html');
 }
 
 // Root redirect to home
@@ -91,7 +92,7 @@ app.get('/', (req,res)=> res.redirect('/home.html'));
 
 // Static serving with protection of html pages (except login)
 app.use((req,res,next)=>{
-  const open = ['/login.html','/styles.css','/Holship_logo.png','/api/logo-base64'];
+  const open = ['/login.html','/mobile-login.html','/styles.css','/Holship_logo.png','/api/logo-base64'];
   if(open.includes(req.path) || req.path.startsWith('/api/')) return next();
   if(req.path.endsWith('.html')) return requireAuth(req,res,next);
   next();

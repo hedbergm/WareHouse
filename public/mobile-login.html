@@ -1,0 +1,87 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Mobil innlogging</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    body { font-family: system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:#0d47a1; margin:0; padding:0; min-height:100vh; display:flex; align-items:center; justify-content:center; }
+    .wrap { width:100%; max-width:420px; padding:34px 26px 42px; box-sizing:border-box; }
+    .card { background:#fff; border-radius:22px; padding:34px 26px 30px; box-shadow:0 8px 32px -8px rgba(0,0,0,0.35),0 4px 16px -6px rgba(0,0,0,0.25); backdrop-filter:blur(8px); }
+    h1 { margin:0 0 6px; font-size:22px; letter-spacing:.5px; text-align:center; font-weight:600; }
+    .sub { text-align:center; font-size:13px; color:#455a64; margin-bottom:24px; }
+    label { display:block; font-size:12px; font-weight:600; color:#2f3b44; margin-bottom:6px; letter-spacing:.5px; }
+    input { width:100%; padding:14px 15px 13px; font-size:16px; border:1px solid #cfd8dc; border-radius:14px; outline:none; background:#f7fafc; letter-spacing:.5px; }
+    input:focus { border-color:#1976d2; background:#fff; box-shadow:0 0 0 3px rgba(25,118,210,0.18); }
+    .field { margin-bottom:18px; }
+    button { width:100%; background:#1976d2; color:#fff; border:none; font-size:16px; font-weight:600; padding:15px 16px 14px; border-radius:16px; cursor:pointer; letter-spacing:.5px; box-shadow:0 4px 14px -4px rgba(25,118,210,0.55),0 2px 6px -2px rgba(25,118,210,0.5); }
+    button:active { transform:translateY(1px); }
+    button:disabled { opacity:.55; filter:grayscale(.4); cursor:default; }
+    .msg { min-height:24px; margin-top:14px; text-align:center; font-size:13px; font-weight:500; }
+    .err { color:#c62828; }
+    .ok { color:#2e7d32; }
+    .logo { text-align:center; margin-bottom:18px; }
+    .logo img { max-width:160px; width:100%; height:auto; filter:drop-shadow(0 4px 10px rgba(0,0,0,.25)); }
+    .fade-in { animation:fade .5s ease; }
+    @keyframes fade { from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);} }
+    .meta-links { margin-top:22px; text-align:center; font-size:12px; color:#e1f5fe; opacity:.85; }
+    .meta-links a { color:#fff; text-decoration:none; font-weight:600; }
+    .meta-links a:hover { text-decoration:underline; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card fade-in">
+      <div class="logo"><img id="logo" alt="logo"></div>
+      <h1>Mobil lager</h1>
+      <div class="sub">Logg inn for å skanne deler</div>
+      <form id="f" autocomplete="on">
+        <div class="field">
+          <label>Brukernavn</label>
+          <input id="u" maxlength="40" autocomplete="username" autocapitalize="none" required>
+        </div>
+        <div class="field">
+          <label>Passord</label>
+          <input id="p" type="password" maxlength="60" autocomplete="current-password" required>
+        </div>
+        <button id="btn" type="submit">Logg inn</button>
+        <div class="msg" id="msg"></div>
+      </form>
+    </div>
+    <div class="meta-links">Desktop? <a href="/login.html">Full versjon</a></div>
+  </div>
+  <script>
+    // Logo
+    fetch('/api/logo-base64').then(r=>r.json()).then(j=>{ if(j.data) document.getElementById('logo').src=j.data; });
+    const f=document.getElementById('f');
+    const u=document.getElementById('u');
+    const p=document.getElementById('p');
+    const msg=document.getElementById('msg');
+    const btn=document.getElementById('btn');
+
+    // If already logged in, jump
+    fetch('/api/me').then(r=> r.ok ? r.json():null).then(j=>{ if(j && j.user){ location.replace('/mobile-home.html'); }});
+
+    f.addEventListener('submit', async e => {
+      e.preventDefault();
+      msg.textContent=''; msg.className='msg';
+      btn.disabled=true; btn.textContent='Logger inn…';
+      try {
+        const r = await fetch('/api/login',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username:u.value.trim(), password:p.value }) });
+        if(r.ok){
+          msg.textContent='OK'; msg.classList.add('ok');
+          setTimeout(()=> location.replace('/mobile-home.html'), 300);
+        } else {
+          const j = await r.json().catch(()=>({error:'Feil'}));
+          msg.textContent=j.error||'Feil'; msg.classList.add('err');
+        }
+      } catch(err){
+        msg.textContent='Nettverksfeil'; msg.classList.add('err');
+      } finally {
+        btn.disabled=false; btn.textContent='Logg inn';
+      }
+    });
+  </script>
+</body>
+</html>
