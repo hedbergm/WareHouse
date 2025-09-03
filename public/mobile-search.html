@@ -1,0 +1,37 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mobil Søk</title>
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    body{padding:14px}
+    .result{border:1px solid #e2e2e2;border-radius:10px;padding:12px;background:#fff;margin-top:10px}
+    .muted{color:#666;font-size:12px}
+    .loc-chip{display:inline-block;background:#f3f6fa;border:1px solid #e1e6ec;padding:3px 6px;border-radius:14px;font-size:11px;margin:2px 4px 0 0}
+  </style>
+</head>
+<body>
+  <h2 style="margin-top:4px">Søk deler</h2>
+  <input id="q" placeholder="Delenummer, beskrivelse eller lokasjon" style="width:100%;margin-top:4px">
+  <div id="out" style="margin-top:12px;font-size:13px" class="muted">Skriv for å søke…</div>
+
+<script>
+async function api(p){ const r = await fetch(p); if(!r.ok) throw await r.json(); return r.json(); }
+let timer=null;
+const qEl = document.getElementById('q');
+qEl.addEventListener('input',()=>{ clearTimeout(timer); timer=setTimeout(run,250); });
+async function run(){
+  const term = qEl.value.trim();
+  if(!term){ out.innerHTML='Skriv for å søke…'; return; }
+  out.innerHTML='Søker…';
+  try {
+    const res = await api('/api/search?term='+encodeURIComponent(term));
+    if(!res.length){ out.innerHTML='Ingen treff'; return; }
+    out.innerHTML = res.map(r => `<div class=result><strong>${r.part_number}</strong> <span class=muted>${r.description||''}</span><div style='margin-top:4px'>Totalt: <strong>${r.total||0}</strong></div><div>${(r.locations||[]).map(l=>`<span class=loc-chip>${l.name} (${l.barcode}) ${l.qty}</span>`).join('')}</div></div>`).join('');
+  } catch(e){ out.innerHTML='Feil: '+(e.error||''); }
+}
+</script>
+</body>
+</html>

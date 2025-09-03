@@ -470,6 +470,56 @@ app.get('/api/parts/resolve/:code', (req,res) => {
   });
 });
 
+// Generic search (part_number, description, or location barcode/name)
+app.get('/api/search', (req,res) => {
+  const term = (req.query.term || '').trim();
+  if(!term) return res.json([]);
+  const like = usePg ? 'ILIKE' : 'LIKE';
+  const wild = `%${term}%`;
+  // Find parts matching term directly
+  const partSql = `SELECT * FROM parts WHERE part_number ${like} ${qMarks([''])[0]} OR description ${like} ${qMarks([''])[0]}`;
+  db.all(partSql, [wild, wild], (e, partRows) => {
+    if(e) return res.status(500).json({ error: e.message });
+    // If term also matches a location, include parts at that location
+    const locSql = `SELECT id FROM locations WHERE name ${like} ${qMarks([''])[0]} OR barcode ${like} ${qMarks([''])[0]}`;
+    db.all(locSql, [wild, wild], (e2, locRows) => {
+      if(e2) return res.status(500).json({ error: e2.message });
+      const locIds = locRows.map(r=>r.id);
+      const partIds = partRows.map(p=>p.id);
+      const allPartIds = new Set(partIds);
+      if(locIds.length){
+        const inList = locIds.map(()=> qMarks([''])[0]).join(',');
+        const sql = `SELECT DISTINCT p.* FROM stock s JOIN parts p ON s.part_id = p.id WHERE s.location_id IN (${inList})`;
+        db.all(sql, locIds, (e3, rows3) => {
+          if(!e3) rows3.forEach(r=> allPartIds.add(r.id));
+          collect([...allPartIds]);
+        });
+      } else {
+        collect([...allPartIds]);
+      }
+      function collect(ids){
+        if(!ids.length) return res.json([]);
+        const placeholders = ids.map(()=> qMarks([''])[0]).join(',');
+        const sql = `SELECT * FROM parts WHERE id IN (${placeholders})`;
+        db.all(sql, ids, async (e4, finalParts) => {
+          if(e4) return res.status(500).json({ error: e4.message });
+          // Attach totals + locations
+            let remaining = finalParts.length;
+            if(!remaining) return res.json([]);
+            const out = [];
+            finalParts.forEach(p => {
+              db.all(`SELECT l.name, l.barcode, s.qty FROM stock s JOIN locations l ON s.location_id = l.id WHERE s.part_id = ${qMarks([p.id])[0]}`, [p.id], async (e5, locs) => {
+                const total = await getTotalQty(p.id);
+                out.push({ part_number: p.part_number, description: p.description, total, locations: locs });
+                if(--remaining===0) res.json(out);
+              });
+            });
+        });
+      }
+    });
+  });
+});
+
 // Heuristikk-endpoint for å sjekke sannsynlig feiltolket Code128 (f.eks TAN-00623 lest som 51793111)
 app.get('/api/parts/heuristic/map/:code', (req,res)=> {
   const raw = req.params.code.trim();
