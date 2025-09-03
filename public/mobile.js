@@ -25,15 +25,12 @@ if (typeof navigator !== 'undefined') {
 
 // Login removed
 const mainScreen = document.getElementById('main-screen');
-const locSelect = document.getElementById('loc-select');
-const scanLocBtn = document.getElementById('scan-loc');
+// Lokasjonshåndtering fjernet (fast lokasjon per del)
 const scanPartBtn = document.getElementById('scan-part');
-const viewLocBtn = document.getElementById('view-loc');
 const stopBtn = document.getElementById('stop-scan');
 const videoEl = document.getElementById('video');
 const scanStatus = document.getElementById('scan-status');
 const lastScan = document.getElementById('last-scan');
-const locContents = document.getElementById('loc-contents');
 const movementPanel = document.getElementById('movement-panel');
 const mvPart = document.getElementById('mv-part');
 const mvQty = document.getElementById('mv-qty');
@@ -44,9 +41,7 @@ const mvMessage = document.getElementById('mv-message');
 const mvInfo = document.getElementById('mv-info');
 const debugBtn = document.getElementById('toggle-debug');
 const debugLog = document.getElementById('debug-log');
-const testCamBtn = document.getElementById('test-camera');
-const photoBtn = document.getElementById('photo-scan');
-const photoInput = document.getElementById('photo-input');
+// Foto/test-kamera fjernet
 
 // Bevegelsesmodus: tving INN eller UT hvis hash inneholder mode=in / mode=out
 function resolveMovementMode(){
@@ -76,39 +71,6 @@ if(debugBtn){
   });
 }
 
-if(testCamBtn){
-  testCamBtn.addEventListener('click', async ()=> {
-    dlog('Starter testkamera');
-    if(!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)){ dlog('Ingen getUserMedia'); return; }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      const track = stream.getVideoTracks()[0];
-      const caps = track.getCapabilities ? track.getCapabilities() : {}; dlog('Track label: '+track.label); dlog('Capabilities: '+JSON.stringify(caps));
-      // Vis stillbilde container
-      videoEl.innerHTML=''; const v=document.createElement('video'); v.autoplay=true; v.playsInline=true; v.srcObject=stream; videoEl.appendChild(v); scanStatus.textContent='Testkamera aktiv (ingen scanning).';
-      setTimeout(()=>{ track.stop(); dlog('Testkamera stoppet'); if(v.parentNode) v.parentNode.removeChild(v); videoEl.textContent='Ingen aktiv skann'; }, 8000);
-    } catch(e){ dlog('Testkamera feil: '+e.message); scanStatus.textContent='Kamera tilgang feilet: '+e.message; }
-  });
-}
-
-if(photoBtn && photoInput){
-  photoBtn.addEventListener('click', ()=> {
-    photoInput.click();
-  });
-  photoInput.addEventListener('change', async () => {
-    if(!photoInput.files || !photoInput.files[0]) return;
-    const file = photoInput.files[0];
-    dlog('Foto valgt: '+file.name+' ('+file.type+')');
-    // Midlertidig løsning: vis forhåndsvisning og be bruker taste inn resultat til vi evt. implementerer offline dekoding.
-    const reader = new FileReader();
-    reader.onload = () => {
-      videoEl.innerHTML = '<img src="'+reader.result+'" style="max-width:100%;border-radius:8px">';
-      const guess = prompt('Skriv inn strekkoden lest fra bildet (midlertidig)');
-      if(guess){ handleScan(guess.trim()); }
-    };
-    reader.readAsDataURL(file);
-  });
-}
 
 let scanning = false;
 let scanMode = null; // only 'part'
@@ -244,14 +206,7 @@ async function handleScan(code){
 }
 
 // handle manual add
-document.getElementById('manual-add').addEventListener('click', () => {
-  const pn = prompt('Delenummer'); if(!pn) return;
-  mvPart.value = pn.trim();
-  mvQty.value = 1;
-  if(movementMode){ mvAction.value = movementMode; mvAction.disabled = true; } else { mvAction.value='in'; mvAction.disabled=false; }
-  movementPanel.classList.remove('hidden'); mvMessage.textContent='';
-  mvInfo.style.display='none'; mvInfo.textContent='';
-});
+// Manuell del-knapp fjernet
 
 mvCancel.addEventListener('click', ()=> { movementPanel.classList.add('hidden'); });
 mvSubmit.addEventListener('click', async () => {

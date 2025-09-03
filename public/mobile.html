@@ -23,21 +23,9 @@
     </div>
 
   <div id="main-screen">
-      <div class="center">
-        <label>Aktiv lokasjon</label>
-      </div>
-      <div style="display:flex;gap:8px;margin-top:4px;align-items:center">
-        <select id="loc-select" style="flex:1"></select>
-        <button id="scan-loc" class="btn" style="flex:0 0 auto">Skann lokasjon</button>
-  <button id="view-loc" class="btn" style="flex:0 0 auto">Innhold</button>
-      </div>
-
       <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
         <button id="scan-part" class="btn">Skann del</button>
-        <button id="manual-add" class="btn">Manuell del</button>
         <button id="stop-scan" class="btn" disabled>Stopp</button>
-  <button id="test-camera" class="btn" type="button">Test kamera</button>
-  <button id="photo-scan" class="btn" type="button">Foto-scan</button>
       </div>
 
       <div id="scanner-area" style="margin-top:10px">
@@ -79,10 +67,6 @@
         <div id="last-scan" style="font-size:13px;color:#333">Ingen</div>
       </div>
 
-      <div style="margin-top:16px">
-        <h3 style="margin:0 0 4px 0;font-size:16px">Lokasjonsinnhold</h3>
-        <div id="loc-contents" class="muted" style="font-size:13px">Ingen lokasjon valgt</div>
-      </div>
 
       <div style="margin-top:12px">
         <button id="toggle-debug" class="btn small" type="button">Debug</button>
@@ -93,7 +77,6 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
-  <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none" />
   <script src="/mobile.js"></script>
   <script>
     function applyMode(){
