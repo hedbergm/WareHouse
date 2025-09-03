@@ -75,6 +75,16 @@ app.get('/Holship_logo.png', (req,res) => {
   res.sendFile(path.join(__dirname,'public','Holship_logo.png'));
 });
 
+// Fallback: return logo as data URL (base64) if static serving fails in certain environments
+app.get('/api/logo-base64', (req,res) => {
+  const fs = require('fs');
+  const p = path.join(__dirname,'public','Holship_logo.png');
+  fs.readFile(p, (err, buf) => {
+    if(err) return res.status(404).json({ error: 'logo missing' });
+    res.json({ data: 'data:image/png;base64,' + buf.toString('base64') });
+  });
+});
+
 const PORT = process.env.PORT || 3000; // ngrok fjernet
 
 const os = require('os');

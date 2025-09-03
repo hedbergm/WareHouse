@@ -9,7 +9,7 @@
 </head>
 <body>
   <header class="portal-header" style="align-items:center">
-    <img src="/Holship_logo.png" alt="WareHouse" style="height:62px;object-fit:contain;display:block">
+    <img id="logo" src="/Holship_logo.png" alt="WareHouse" style="height:62px;object-fit:contain;display:block" onerror="(function(el){fetch('/api/logo-base64').then(r=>r.ok?r.json():null).then(d=>{if(d&&d.data){el.src=d.data;}});})(this)">
     <div class="tagline">Intern logistikk & lagerplattform</div>
   </header>
 
