@@ -66,6 +66,13 @@ async function refresh() {
 
   const locs = await api('/api/locations').catch(()=>[]);
   const locDiv = document.getElementById('locations');
+  // Populate dropdown for fixed location selection
+  const ddl = document.getElementById('part-default-loc');
+  if (ddl) {
+    const current = ddl.value; // preserve selection if possible
+    ddl.innerHTML = '<option value="">(Ingen fast lokasjon)</option>' + locs.map(l => `<option value="${l.barcode}">${l.name} (${l.barcode})</option>`).join('');
+    if (current && [...ddl.options].some(o => o.value === current)) ddl.value = current;
+  }
   locDiv.innerHTML = '<p style="margin:4px 0 10px"><a href="/location-barcodes.html" class="muted-link" style="font-size:12px">Utskrift av alle strekkoder →</a></p>' +
     locs.map(l => `
     <div class="loc-row" data-id="${l.id}">
@@ -99,18 +106,7 @@ async function refresh() {
   }));
 }
 
-// Fallback: hvis HTML er gammel og ikke har feltet for fast lokasjon, legg det inn dynamisk
-(function ensureFixedLocationField(){
-  if (document.getElementById('part-default-loc')) return; // already present
-  const partNumberInput = document.getElementById('part-number');
-  if(!partNumberInput) return;
-  const formRow = partNumberInput.closest('.form-row');
-  if(!formRow) return;
-  const div = document.createElement('div');
-  div.className = 'col';
-  div.innerHTML = '<label>Fast lokasjon (barcode)</label><input id="part-default-loc" placeholder="LOC-A1">';
-  formRow.appendChild(div);
-})();
+// Dynamic injection fallback no longer needed (dropdown shipped in HTML)
 
 document.getElementById('add-loc').addEventListener('click', async () => {
   const name = document.getElementById('loc-name').value.trim();
