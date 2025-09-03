@@ -28,7 +28,8 @@ a.card-link { text-decoration:none; color:inherit }
 .muted-link:hover { text-decoration:underline }
 section { margin-bottom: 20px; background:#fff; border-radius:8px; box-shadow:0 1px 3px rgba(10,10,10,0.05); padding:16px }
 h1 { margin-top: 0; font-weight:600 }
-input, button { font-size:14px; padding:8px 10px; border-radius:6px; border:1px solid #ddd }
+input, button, select { font-size:14px; padding:8px 10px; border-radius:6px; border:1px solid #ddd; background:#fff }
+select { cursor:pointer; }
 label{font-size:12px; color:var(--muted); display:block; margin-bottom:6px}
 .form-row{display:flex;gap:12px}
 .col{flex:1}
