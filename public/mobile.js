@@ -223,8 +223,20 @@ async function handleScan(code){
     const part = data.part || {}; const total = data.total || 0;
     const minq = part.min_qty ?? 0;
     const desc = part.description || '';
+    const diff = total - minq;
     const locLines = (data.locations||[]).map(l=> `${l.location_name||''} (${l.barcode}) ${l.qty}`).join(' · ');
-    mvInfo.innerHTML = `<strong>${part.part_number||code}</strong>${desc? ' – '+desc:''}<br>Totalt: <strong>${total}</strong>  Min: <strong>${minq}</strong>${locLines? '<br>'+locLines:''}`;
+    const warn = total <= minq;
+    if(warn){
+      mvInfo.style.background = '#fff2f2';
+      mvInfo.style.borderColor = '#f5b5b5';
+      mvInfo.style.color = '#7d1d1d';
+    } else {
+      mvInfo.style.background = '#f4f8fc';
+      mvInfo.style.borderColor = '#e2e6ec';
+      mvInfo.style.color = '#222';
+    }
+    const statusLine = `Totalt: <strong>${total}</strong>  Min: <strong>${minq}</strong>  Diff: <strong>${diff>=0? '+'+diff: diff}</strong>`;
+    mvInfo.innerHTML = `<strong>${part.part_number||code}</strong>${desc? ' – '+desc:''}<br>${statusLine}${locLines? '<br>'+locLines:''}`;
     mvInfo.style.display='block';
   } catch(e){
     mvInfo.style.display='block'; mvInfo.innerHTML='<span style="color:#c00">Fant ikke del i systemet (opprettes ved lagring om deler lages et annet sted)</span>';
