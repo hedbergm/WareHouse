@@ -33,7 +33,14 @@
     </form>
   </div>
   <script>
-    fetch('/api/logo-base64').then(r=>r.json()).then(d=>{ if(d.data) document.getElementById('logo').src=d.data; });
+    (async ()=>{
+      try {
+        const r = await fetch('/api/logo-base64');
+        if(r.ok){ const j = await r.json(); if(j.data){ document.getElementById('logo').src=j.data; return; } }
+      } catch(_){}
+      // Fallback to static path; if still not shown user will just see empty
+      document.getElementById('logo').src='/Holship_logo.png';
+    })();
     const form = document.getElementById('login-form');
     form.addEventListener('submit', async (e)=>{
       e.preventDefault();

@@ -52,8 +52,14 @@
     <div class="meta-links">Desktop? <a href="/login.html">Full versjon</a></div>
   </div>
   <script>
-    // Logo
-    fetch('/api/logo-base64').then(r=>r.json()).then(j=>{ if(j.data) document.getElementById('logo').src=j.data; });
+    // Logo med fallback
+    (async ()=>{
+      try {
+        const r = await fetch('/api/logo-base64');
+        if(r.ok){ const j = await r.json(); if(j.data){ document.getElementById('logo').src=j.data; return; } }
+      } catch(_){}
+      document.getElementById('logo').src='/Holship_logo.png';
+    })();
     const f=document.getElementById('f');
     const u=document.getElementById('u');
     const p=document.getElementById('p');
