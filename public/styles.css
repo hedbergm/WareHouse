@@ -63,6 +63,10 @@ label{font-size:12px; color:var(--muted); display:block; margin-bottom:6px}
 
 /* Mobile scanner centering */
 #scanner-area{display:flex;flex-direction:column;align-items:center}
-#video{max-width:500px;margin:0 auto;display:flex;justify-content:center;align-items:center;aspect-ratio:16/9;position:relative}
-#video video,#video canvas{width:100%!important;height:100%!important;object-fit:cover;border-radius:8px}
+#video{max-width:560px;width:100%;margin:0 auto;display:flex;justify-content:center;align-items:center;aspect-ratio:16/9;position:relative;overflow:hidden;border:2px solid #111;background:#000;border-radius:10px}
+#video video,#video canvas{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);/* ensure center */width:auto!important;height:100%!important;min-width:100%;min-height:100%;object-fit:cover}
 #video img{max-width:100%;border-radius:8px}
+#video .scan-guide{position:absolute;inset:0;pointer-events:none;}
+#video .scan-guide:before{content:"";position:absolute;top:50%;left:50%;width:52%;height:52%;transform:translate(-50%,-50%);border:2px solid rgba(255,255,255,.55);border-radius:8px;box-shadow:0 0 0 200vmax rgba(0,0,0,.15) inset}
+#video.scanning-loc .scan-guide:before{border-color:rgba(0,200,255,.75);}
+#video.scanning-part .scan-guide:before{border-color:rgba(255,210,0,.8);}

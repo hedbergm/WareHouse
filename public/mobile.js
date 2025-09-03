@@ -113,6 +113,8 @@ function startScan(mode){
   if(scanning) return;
   scanMode = mode;
   scanStatus.innerText = mode === 'loc' ? 'Skanner lokasjon...' : 'Skanner del...';
+  videoEl.classList.remove('scanning-loc','scanning-part');
+  videoEl.classList.add(mode==='loc'?'scanning-loc':'scanning-part');
   startCameraScanner();
 }
 
@@ -141,6 +143,8 @@ function startCameraScanner(){
   scanning = true;
   stopBtn.disabled = false;
   videoEl.textContent = '';
+  // ensure guide overlay remains
+  if(!videoEl.querySelector('.scan-guide')){ const g=document.createElement('div'); g.className='scan-guide'; videoEl.appendChild(g); }
   try { Quagga.offDetected(); } catch(_) {}
   const quaggaConfig = {
     inputStream: { name:'Live', type:'LiveStream', target: videoEl, constraints:{ facingMode:'environment' } },
@@ -185,6 +189,7 @@ function startCameraScanner(){
 function stopCameraScanner(){
   if(!scanning) return;
   scanning=false; Quagga.stop(); scanStatus.innerText='Stoppet'; stopBtn.disabled=true; if(!videoEl.hasChildNodes()) videoEl.textContent='Ingen aktiv skann';
+  videoEl.classList.remove('scanning-loc','scanning-part');
 }
 
 async function handleScan(code){
