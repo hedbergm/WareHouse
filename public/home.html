@@ -43,6 +43,15 @@
     </div>
   </section>
 
+  <section>
+    <h2 style="margin-top:0">Søk etter del</h2>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+      <input id="portal-search" placeholder="Delenummer, beskrivelse eller lokasjon" style="flex:1;min-width:260px">
+      <button id="portal-search-clear" class="btn" type="button" style="background:#6c757d">Tøm</button>
+    </div>
+    <div id="portal-search-out" style="font-size:13px;color:#555">Skriv for å søke…</div>
+  </section>
+
   <footer class="site">
     WareHouse © 2025 – Internt system. Flere moduler aktiveres fortløpende.
   </footer>
@@ -63,6 +72,45 @@
         b.innerHTML = 'Database-modus: <strong>Postgres</strong>. Parts: '+s.parts+' · Lokasjoner: '+s.locations+' · Beholdning rader: '+s.stock;
       }
     }).catch(()=>{});
+
+    // Enkel søkefunksjon
+    const inp = document.getElementById('portal-search');
+    const out = document.getElementById('portal-search-out');
+    const clr = document.getElementById('portal-search-clear');
+    let t=null;
+    async function run(){
+      const term = (inp.value||'').trim();
+      if(!term){ out.innerHTML='Skriv for å søke…'; return; }
+      out.innerHTML='Søker…';
+      try {
+        const r = await fetch('/api/search?term='+encodeURIComponent(term));
+        if(!r.ok){ out.innerHTML='Feil'; return; }
+        const data = await r.json();
+        if(!data.length){ out.innerHTML='Ingen treff'; return; }
+        out.innerHTML = data.map(d => {
+          const locs = (d.locations||[]).map(l => `<span style="display:inline-block;background:#f3f6fa;border:1px solid #e1e6ec;padding:3px 6px;border-radius:14px;font-size:11px;margin:2px 4px 0 0">${l.name||''} (${l.barcode}) ${l.qty}</span>`).join('');
+          return `<div style="padding:10px 12px;border:1px solid #e5e8eb;border-radius:10px;background:#fff;margin-top:10px">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+              <div style="flex:1">
+                <strong style="font-size:15px">${d.part_number}</strong>
+                <div style="font-size:12px;color:#555;margin-top:2px">${d.description||''}</div>
+                <div style="font-size:12px;color:#333;margin-top:6px">Totalt: <strong>${d.total||0}</strong></div>
+                <div style="margin-top:6px">${locs||'<span style=\"font-size:11px;color:#777\">Ingen lokasjoner</span>'}</div>
+              </div>
+              <div style="text-align:right;min-width:120px">
+                <a href="/index.html" class="btn small" style="text-decoration:none;font-size:12px">Åpne lager</a>
+              </div>
+            </div>
+          </div>`;
+        }).join('');
+      } catch(e){ out.innerHTML='Feil: '+(e.message||''); }
+    }
+    if(inp){
+      inp.addEventListener('input', ()=> { clearTimeout(t); t=setTimeout(run,300); });
+      inp.addEventListener('keydown', e=> { if(e.key==='Enter'){ clearTimeout(t); run(); }});
+    }
+    if(clr){ clr.addEventListener('click', ()=> { inp.value=''; run(); inp.focus(); }); }
+  </script>
   </script>
 </body>
 </html>
