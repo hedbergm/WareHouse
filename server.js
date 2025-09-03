@@ -13,18 +13,26 @@ console.log('[DB MODE]', usePg ? 'Postgres' : 'SQLite');
 if (usePg) {
   (async () => {
     try {
-  const ddl = `CREATE TABLE IF NOT EXISTS parts( id SERIAL PRIMARY KEY, part_number TEXT UNIQUE NOT NULL, description TEXT, min_qty INTEGER DEFAULT 0 );
-CREATE TABLE IF NOT EXISTS locations( id SERIAL PRIMARY KEY, name TEXT NOT NULL, barcode TEXT UNIQUE NOT NULL );
+      const ddl = `CREATE TABLE IF NOT EXISTS locations( id SERIAL PRIMARY KEY, name TEXT NOT NULL, barcode TEXT UNIQUE NOT NULL );
+CREATE TABLE IF NOT EXISTS parts( id SERIAL PRIMARY KEY, part_number TEXT UNIQUE NOT NULL, description TEXT, min_qty INTEGER DEFAULT 0, default_location_id INTEGER REFERENCES locations(id) );
 CREATE TABLE IF NOT EXISTS stock( id SERIAL PRIMARY KEY, part_id INTEGER NOT NULL REFERENCES parts(id) ON DELETE CASCADE, location_id INTEGER NOT NULL REFERENCES locations(id) ON DELETE CASCADE, qty INTEGER NOT NULL DEFAULT 0, UNIQUE(part_id, location_id) );
 CREATE TABLE IF NOT EXISTS transactions( id SERIAL PRIMARY KEY, part_id INTEGER NOT NULL REFERENCES parts(id), location_id INTEGER NOT NULL REFERENCES locations(id), qty INTEGER NOT NULL, action TEXT NOT NULL, created_at TIMESTAMP DEFAULT NOW() );
 CREATE TABLE IF NOT EXISTS users( id SERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL );
 CREATE TABLE IF NOT EXISTS part_barcodes( id SERIAL PRIMARY KEY, part_id INTEGER NOT NULL REFERENCES parts(id) ON DELETE CASCADE, barcode TEXT UNIQUE NOT NULL );`;
       for (const stmt of ddl.split(/;\s*/)) { if (stmt.trim()) await pgdb.run(stmt); }
-      console.log('[PG] Schema ensured at startup');
+      await pgdb.run('ALTER TABLE parts ADD COLUMN IF NOT EXISTS default_location_id INTEGER REFERENCES locations(id)');
+      console.log('[PG] Schema ensured at startup (default_location_id)');
     } catch (e) {
       console.error('[PG] Failed ensuring schema', e.message);
     }
   })();
+} else {
+  // Add column to SQLite if missing
+  dbSqlite.all('PRAGMA table_info(parts)', [], (err, rows) => {
+    if (!err && rows && !rows.find(r => r.name === 'default_location_id')) {
+      dbSqlite.run('ALTER TABLE parts ADD COLUMN default_location_id INTEGER', [], e => { if(e) console.log('SQLite alter parts add default_location_id failed:', e.message); });
+    }
+  });
 }
 
 // Unified DB helper interface
@@ -256,21 +264,32 @@ app.get('/api/parts/:part_number/barcode.png', (req, res) => {
 
 app.post('/api/parts', async (req, res) => {
   try {
-    let { part_number, description, min_qty } = req.body || {};
+    let { part_number, description, min_qty, default_location_barcode } = req.body || {};
     if (!part_number) return res.status(400).json({ error: 'part_number required' });
     part_number = String(part_number).trim();
     const minq = parseInt(min_qty || '0', 10);
+    let defaultLocId = null;
+    if (default_location_barcode) {
+      const loc = await getLocationByBarcode(default_location_barcode);
+      if(!loc) return res.status(400).json({ error: 'default location not found' });
+      defaultLocId = loc.id;
+    }
     if (usePg) {
-      const row = await pgdb.get('INSERT INTO parts (part_number, description, min_qty) VALUES ($1,$2,$3) RETURNING id', [part_number, description || '', minq]);
-      const created = { id: row.id, part_number, description, min_qty: minq };
+      const row = await pgdb.get('INSERT INTO parts (part_number, description, min_qty, default_location_id) VALUES ($1,$2,$3,$4) RETURNING id', [part_number, description || '', minq, defaultLocId]);
+      const created = { id: row.id, part_number, description, min_qty: minq, default_location_id: defaultLocId };
       console.log('[ADD PART]', created);
+      if (defaultLocId) await pgdb.run('INSERT INTO stock (part_id, location_id, qty) VALUES ($1,$2,0) ON CONFLICT (part_id, location_id) DO NOTHING', [row.id, defaultLocId]);
       return res.json(created);
     } else {
-      const sql = `INSERT INTO parts (part_number, description, min_qty) VALUES (${qMarks([part_number, description || '', minq]).join(', ')})`;
-      db.run(sql, [part_number, description || '', minq], function(err) {
+      const base = [part_number, description || '', minq];
+      let sql, params;
+      if (defaultLocId) { sql = 'INSERT INTO parts (part_number, description, min_qty, default_location_id) VALUES (?,?,?,?)'; params = [...base, defaultLocId]; }
+      else { sql = 'INSERT INTO parts (part_number, description, min_qty) VALUES (?,?,?)'; params = base; }
+      db.run(sql, params, function(err) {
         if (err) return res.status(500).json({ error: err.message });
-        const created = { id: this.lastID, part_number, description, min_qty: minq };
+        const created = { id: this.lastID, part_number, description, min_qty: minq, default_location_id: defaultLocId };
         console.log('[ADD PART]', created);
+        if (defaultLocId) db.run('INSERT OR IGNORE INTO stock (part_id, location_id, qty) VALUES (?,?,0)', [this.lastID, defaultLocId]);
         res.json(created);
       });
     }
@@ -287,15 +306,21 @@ app.get('/api/parts', (req, res) => {
 });
 
 // Update a part
-app.put('/api/parts/:id', (req, res) => {
+app.put('/api/parts/:id', async (req, res) => {
   const id = req.params.id;
-  const { part_number, description, min_qty } = req.body;
+  const { part_number, description, min_qty, default_location_barcode } = req.body;
   if (!part_number) return res.status(400).json({ error: 'part_number required' });
   const minq = parseInt(min_qty || '0', 10);
-  const sql = usePg ? 'UPDATE parts SET part_number = $1, description = $2, min_qty = $3 WHERE id = $4' : 'UPDATE parts SET part_number = ?, description = ?, min_qty = ? WHERE id = ?';
-  db.run(sql, [part_number, description || '', minq, id], function(err) {
+  let defaultLocId = null;
+  if (default_location_barcode) {
+    const loc = await getLocationByBarcode(default_location_barcode);
+    if(!loc) return res.status(400).json({ error: 'default location not found' });
+    defaultLocId = loc.id;
+  }
+  const sql = usePg ? 'UPDATE parts SET part_number = $1, description = $2, min_qty = $3, default_location_id = $4 WHERE id = $5' : 'UPDATE parts SET part_number = ?, description = ?, min_qty = ?, default_location_id = ? WHERE id = ?';
+  db.run(sql, [part_number, description || '', minq, defaultLocId, id], function(err) {
     if (err) return res.status(500).json({ error: err.message });
-    res.json({ id, part_number, description, min_qty: minq });
+    res.json({ id, part_number, description, min_qty: minq, default_location_id: defaultLocId });
   });
 });
 
@@ -324,6 +349,10 @@ app.post('/api/stock/scan', async (req, res) => {
     if (!part) return res.status(404).json({ error: 'part not found' });
     const loc = await getLocationByBarcode(location_barcode);
     if (!loc) return res.status(404).json({ error: 'location not found' });
+
+    if (part.default_location_id && String(part.default_location_id) !== String(loc.id)) {
+      return res.status(400).json({ error: 'part has fixed location' });
+    }
 
     db.serialize(async () => {
       // Ensure stock row exists (qty=0 if new)
