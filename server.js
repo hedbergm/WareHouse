@@ -299,7 +299,10 @@ app.post('/api/parts', async (req, res) => {
 });
 
 app.get('/api/parts', (req, res) => {
-  db.all('SELECT * FROM parts', [], (err, rows) => {
+  const sql = `SELECT p.*, l.barcode AS default_location_barcode, l.name AS default_location_name
+               FROM parts p
+               LEFT JOIN locations l ON p.default_location_id = l.id`;
+  db.all(sql, [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows);
   });
@@ -424,7 +427,7 @@ app.get('/api/debug/locations', (req,res) => {
 
 // /api/debug/mobile-auth removed with mobile login
 
-// Get stock for a part
+// Get stock for a part (includes fixed location with qty 0 if no stock yet)
 app.get('/api/stock/:part_number', async (req, res) => {
   const part_number = req.params.part_number;
   const part = await getPartByNumber(part_number);

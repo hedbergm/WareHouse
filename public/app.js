@@ -22,12 +22,14 @@ async function refresh() {
     }
   }));
 
-  partsDiv.innerHTML = partsWithStock.map(({ part: p, stock }) => `
+  partsDiv.innerHTML = partsWithStock.map(({ part: p, stock }) => {
+    const fixedInfo = p.default_location_id ? `<span class=\"fixed-loc-tag\">Fast: ${p.default_location_name || ''} (${p.default_location_barcode || ''})</span>` : '';
+    return `
   <div class="part-row" data-id="${p.id}">
       <div class="part-left">
         <strong>${p.part_number}</strong>
         <div class="desc">${p.description || ''}</div>
-    <div class="meta">Min: ${p.min_qty} · Totalt: ${stock.total}${p.default_location_id ? ' · Fast lokasjon' : ''}</div>
+    <div class="meta">Min: ${p.min_qty} · Totalt: ${stock.total} ${fixedInfo}</div>
         <div class="locs">
           ${stock.locations && stock.locations.length ? stock.locations.map(l => `
             <div class="loc-item">${l.location_name} (${l.barcode}) — <strong>${l.qty}</strong></div>
@@ -42,7 +44,7 @@ async function refresh() {
         </div>
       </div>
     </div>
-  `).join('');
+  `; }).join('');
 
   // attach handlers
   document.querySelectorAll('.delete-part').forEach(b => b.addEventListener('click', async (e) => {
