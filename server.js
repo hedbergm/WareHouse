@@ -188,36 +188,42 @@ if (process.env.SMTP_USER && process.env.SMTP_PASS) {
     host: process.env.SMTP_HOST || 'smtp.office365.com',
     port: parseInt(process.env.SMTP_PORT || '587', 10),
     secure: false,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    tls: { ciphers: 'SSLv3' }
+  });
+  // Verify transporter at startup for early feedback
+  transporter.verify((err, success) => {
+    if (err) {
+      console.error('[SMTP VERIFY ERROR]', err.message);
+    } else {
+      console.log('[SMTP VERIFY OK]', success);
     }
   });
 } else {
-  console.log('SMTP credentials not provided. Alerts will be logged to console only.');
+  console.log('[SMTP] credentials not provided. Alerts will be logged only (no email).');
 }
 
-function sendAlertEmail(part, totalQty) {
-  const to = process.env.ALERT_EMAIL || 'mhe@holship.com';
-  const subject = `Lav beholdning: ${part.part_number}`;
-  const text = `Del ${part.part_number} (${part.description || ''}) har nå total beholdning ${totalQty} som er under min ${part.min_qty}.`;
+function sendAlertEmail(part, totalQty, opts = {}) {
+  const to = process.env.ALERT_EMAIL || process.env.SMTP_USER || 'mhe@holship.com';
+  const subject = opts.subjectOverride || `Lav beholdning: ${part.part_number}`;
+  const text = opts.textOverride || `Del ${part.part_number} (${part.description || ''}) har nå total beholdning ${totalQty} som er under min ${part.min_qty}.`; 
 
   if (!transporter) {
-    console.log('[ALERT - not sent, SMTP not configured] ', subject, text);
-    return;
+    console.log('[ALERT - NO SMTP]', { subject, to, text });
+    return Promise.resolve({ simulated: true });
   }
 
-  const msg = {
-    from: process.env.SMTP_USER,
-    to,
-    subject,
-    text
-  };
-
-  transporter.sendMail(msg, (err, info) => {
-    if (err) console.error('Failed to send alert email', err);
-    else console.log('Alert email sent', info.response);
-  });
+  const msg = { from: process.env.SMTP_USER, to, subject, text }; 
+  console.log('[ALERT - SENDING]', { to, subject, totalQty, part_id: part.id });
+  return transporter.sendMail(msg)
+    .then(info => {
+      console.log('[ALERT - SENT]', info.response || info);
+      return { ok: true, response: info.response };
+    })
+    .catch(err => {
+      console.error('[ALERT - FAIL]', err && err.message);
+      return { ok: false, error: err.message };
+    });
 }
 
 // Alert state (in-memory). For persistens kunne dette vært egen tabell.
@@ -230,8 +236,22 @@ app.post('/api/debug/test-alert', requireAuth, async (req,res) => {
     if(!pn) return res.status(400).json({ error:'part_number required'});
     const part = await getPartByNumber(pn);
     if(!part) return res.status(404).json({ error:'part not found'});
-    sendAlertEmail(part, await getTotalQty(part.id));
-    res.json({ ok:true });
+    const total = await getTotalQty(part.id);
+    const result = await sendAlertEmail(part, total, { subjectOverride: 'TEST ALERT (manuell)', textOverride: `Test for del ${part.part_number}. Total=${total}` });
+    res.json({ ok:true, result });
+  } catch(e){ res.status(500).json({ error:e.message }); }
+});
+
+// Force alert ignoring threshold crossing / throttle (for debugging)
+app.post('/api/debug/force-alert', requireAuth, async (req,res) => {
+  try {
+    const pn = (req.body && req.body.part_number) || req.query.part_number;
+    if(!pn) return res.status(400).json({ error:'part_number required'});
+    const part = await getPartByNumber(pn);
+    if(!part) return res.status(404).json({ error:'part not found'});
+    const total = await getTotalQty(part.id);
+    const result = await sendAlertEmail(part, total, { subjectOverride: 'FORCE ALERT (debug)', textOverride: `Tvunget alert for ${part.part_number}. Total=${total}, Min=${part.min_qty}` });
+    res.json({ ok:true, forced:true, result });
   } catch(e){ res.status(500).json({ error:e.message }); }
 });
 
@@ -506,15 +526,21 @@ app.post('/api/stock/scan', requireAuth, async (req, res) => {
         try {
           if (action === 'out' && part.min_qty > 0) {
             const crossed = totalAfter <= part.min_qty && totalBefore > part.min_qty;
+            const throttleMin = parseInt(process.env.ALERT_THROTTLE_MINUTES || '30', 10);
+            const throttleMs = throttleMin * 60000;
+            const st = alertState[part.id] || {};
             if (crossed) {
-              const throttleMin = parseInt(process.env.ALERT_THROTTLE_MINUTES || '30', 10);
-              const throttleMs = throttleMin * 60000;
-              const st = alertState[part.id] || {};
               if (!st.lastSent || (Date.now() - st.lastSent) > throttleMs) {
                 sendAlertEmail(part, totalAfter);
                 alertState[part.id] = { lastSent: Date.now(), lastQty: totalAfter };
+              } else if (process.env.ALERT_DEBUG) {
+                console.log('[ALERT DEBUG] Skipped pga throttle', { part: part.part_number, lastSentAgoMs: Date.now() - st.lastSent });
               }
+            } else if (process.env.ALERT_DEBUG) {
+              console.log('[ALERT DEBUG] Ikke sendt - kriterier ikke oppfylt', { part: part.part_number, totalAfter, totalBefore, min: part.min_qty });
             }
+          } else if (process.env.ALERT_DEBUG && action === 'out') {
+            console.log('[ALERT DEBUG] min_qty=0 -> ingen alert', { part: part.part_number });
           }
         } catch(e){ console.error('alert logic failed', e.message); }
         const txSql = usePg
