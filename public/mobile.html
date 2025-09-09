@@ -112,6 +112,36 @@
         if(autoTimer) clearTimeout(autoTimer);
         autoTimer = setTimeout(()=> flush('timeout'), FLUSH_DELAY);
       });
+      // Global fallback: hvis wedge ikke går inn i input (fokus tapt), fang keydown på window
+      let gBuffer=''; let gLast=0; let gTimer=null; const GLOBAL_TIMEOUT=150; const GLOBAL_FLUSH=160;
+      function gFlush(reason){
+        const code = gBuffer.trim();
+        if(code){ d('[HW-G] '+reason+' => '+code); window.dispatchEvent(new CustomEvent('hw-barcode',{ detail: code })); }
+        gBuffer='';
+      }
+      window.addEventListener('keydown', e => {
+        // Ignorer hvis fokus er i et felt vi vil la brukeren skrive i senere (har ingen i dette skjermbildet unntatt skjult input)
+        if(e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA') && e.target.id!==partInputProxyId) return;
+        const now = Date.now();
+        if(e.key==='Enter' || e.key==='Tab'){ e.preventDefault(); gFlush('enter'); return; }
+        if(e.key.length===1){
+          if(now - gLast > GLOBAL_TIMEOUT){ if(gBuffer) gFlush('gap'); }
+          gBuffer += e.key; d('[HW-G] key '+e.key+' len='+gBuffer.length);
+        }
+        gLast = now;
+        if(gTimer) clearTimeout(gTimer);
+        gTimer = setTimeout(()=> gFlush('timeout'), GLOBAL_FLUSH);
+      }, true);
+      // Periodisk forsøk på fokus hvis vi ikke er i et annet input
+      setInterval(()=> { if(document.activeElement!==hidden){ focusHidden(); } }, 2000);
+      // Debug knapp injiser simuleringsknapp
+      const dbgBtn = document.getElementById('toggle-debug');
+      if(dbgBtn && !document.getElementById('simulate-scan-btn')){
+        const sim = document.createElement('button'); sim.textContent='Simuler SCAN'; sim.id='simulate-scan-btn'; sim.className='btn small'; sim.style.marginLeft='6px';
+        sim.addEventListener('click', ()=> { const code = prompt('Testkode','TEST123'); if(code) window.dispatchEvent(new CustomEvent('hw-barcode',{ detail: code })); });
+        dbgBtn.parentNode.insertBefore(sim, dbgBtn.nextSibling);
+      }
+      d('[HW] global fallback aktivert');
       // WebSocket
       const wsBtn = document.getElementById('ws-indicator');
       function setWsState(state){
