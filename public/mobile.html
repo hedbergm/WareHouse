@@ -26,6 +26,7 @@
       <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
         <button id="scan-part" class="btn">Skann del</button>
         <button id="stop-scan" class="btn" disabled>Stopp</button>
+  <button id="ws-indicator" class="btn small" type="button" disabled style="opacity:.7">WS…</button>
       </div>
 
       <div id="scanner-area" style="margin-top:10px">
@@ -79,6 +80,58 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
   <script src="/mobile.js"></script>
   <script>
+    // Zebra / DataWedge integrasjon (WebSocket + tastatur wedge auto-fokus)
+    (function(){
+      const partInputProxyId = 'hidden-hw-barcode-input';
+      let hidden = document.getElementById(partInputProxyId);
+      if(!hidden){
+        hidden = document.createElement('input');
+        hidden.type = 'text';
+        hidden.id = partInputProxyId;
+        hidden.autocapitalize = 'off';
+        hidden.autocomplete = 'off';
+        hidden.spellcheck = false;
+        hidden.style.position='fixed';
+        hidden.style.opacity='0';
+        hidden.style.pointerEvents='none';
+        hidden.style.top='-50px';
+        document.body.appendChild(hidden);
+      }
+      function focusHidden(){ try { hidden.focus(); } catch(_){} }
+      document.addEventListener('click', focusHidden);
+      focusHidden();
+      let buffer=''; let lastKeyTime=0; const KEY_TIMEOUT=150; // ms mellom tegn for at vi skal anta skanner
+      hidden.addEventListener('keydown', e => {
+        if(e.key==='Enter'){
+          const code = buffer.trim(); buffer=''; if(code) window.dispatchEvent(new CustomEvent('hw-barcode',{ detail: code }));
+          e.preventDefault(); hidden.value=''; return;
+        }
+        const t = Date.now(); if(t-lastKeyTime > KEY_TIMEOUT) buffer=''; lastKeyTime=t;
+        if(e.key.length===1) buffer += e.key; // bygg streng
+      });
+      // WebSocket
+      const wsBtn = document.getElementById('ws-indicator');
+      function setWsState(state){ if(!wsBtn) return; if(state==='ok'){ wsBtn.textContent='WS ✔'; wsBtn.style.background='#198754'; wsBtn.style.color='#fff'; wsBtn.disabled=true; } else if(state==='err'){ wsBtn.textContent='WS ✖'; wsBtn.style.background='#dc3545'; wsBtn.style.color='#fff'; } else { wsBtn.textContent='WS…'; wsBtn.style.background='#6c757d'; wsBtn.style.color='#fff'; } }
+      let ws=null; let wsUrlBase = (location.protocol==='https:'? 'wss://' : 'ws://') + location.host + '/scan';
+      function connect(){
+        setWsState('connecting');
+        try { ws = new WebSocket(wsUrlBase); } catch(e){ setWsState('err'); return; }
+        ws.onopen = () => setWsState('ok');
+        ws.onclose = () => { setWsState('err'); setTimeout(connect, 4000); };
+        ws.onerror = () => { setWsState('err'); };
+        ws.onmessage = ev => {
+          try { const msg = JSON.parse(ev.data); if(msg.type==='scan' && msg.data){ window.dispatchEvent(new CustomEvent('ws-barcode',{ detail: String(msg.data) })); } } catch(_){ }
+        };
+      }
+      connect();
+      // Felles handler: prioriter stopp av kamera og opprett bevegelse samme som camera handleScan
+      async function injectScan(code, source){
+        // mobile.js eksponerer handleHwScan hvis vi legger det til (patch nedenfor)
+        if(window.__handleExternalScan){ window.__handleExternalScan(code, source); }
+      }
+      window.addEventListener('hw-barcode', e => injectScan(e.detail,'hw'));
+      window.addEventListener('ws-barcode', e => injectScan(e.detail,'ws'));
+    })();
     function applyMode(){
       const hash = location.hash || '';
       let mode = null;

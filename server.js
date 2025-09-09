@@ -765,4 +765,41 @@ app.get('/api/debug/alert-state', requireAuth, (req,res)=> {
   res.json({ alertState });
 });
 
-app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
+// --- WebSocket (Zebra DataWedge) støtte ---
+// DataWedge kan konfigureres til å sende Intents til en liten Android WebView wrapper
+// men enklere er å bruke DataWedge WF (IP) Plugin eller en mellom-app som videresender
+// skann til denne serveren via WebSocket. For ren PWA bruker vi en enkel WS kanal.
+// Klienten åpner ws://HOST:PORT/scan og mottar JSON { type:'scan', data:'<kode>' } hvis
+// server (eller annet system) pusher. Vi støtter også at klient selv sender { scan:"CODE" }.
+let wss = null; let wsClients = new Set();
+try {
+  const httpServer = app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
+  const { Server: WSServer } = require('ws');
+  wss = new WSServer({ server: httpServer, path: '/scan' });
+  wss.on('connection', (ws, req) => {
+    wsClients.add(ws);
+    ws.send(JSON.stringify({ type:'hello', msg:'WS tilkoblet' }));
+    ws.on('message', msg => {
+      try {
+        const data = JSON.parse(msg.toString());
+        // Hvis klient sender { scan:"CODE" } broadcast til alle andre (echo til debug)
+        if(data && data.scan){
+          const payload = JSON.stringify({ type:'scan', data: String(data.scan) });
+          wsClients.forEach(c => { if(c.readyState===1) c.send(payload); });
+        }
+      } catch(e){ /* ignore */ }
+    });
+    ws.on('close', ()=> wsClients.delete(ws));
+  });
+  // Enkel HTTP endpoint for å sende en testskann (for integrasjon eller curl)
+  app.post('/api/debug/push-scan', (req,res)=> {
+    const code = (req.body && req.body.code)|| (req.query && req.query.code);
+    if(!code) return res.status(400).json({ error:'code required'});
+    const payload = JSON.stringify({ type:'scan', data: String(code) });
+    let sent = 0; wsClients.forEach(c=> { if(c.readyState===1){ c.send(payload); sent++; } });
+    res.json({ ok:true, sent });
+  });
+} catch(e){
+  console.error('[WS INIT FAILED]', e.message);
+  app.listen(PORT, () => console.log(`Server listening on port ${PORT} (uten WebSocket)`));
+}

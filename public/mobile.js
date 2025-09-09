@@ -224,3 +224,14 @@ mvSubmit.addEventListener('click', async () => {
 
 // loadLocationContents removed (fast lokasjon håndteres server-side)
 
+// Ekstern (Zebra hardware / WebSocket) skann støtte
+// Denne funksjonen trigges fra mobile.html via window.__handleExternalScan
+window.__handleExternalScan = async function(code, source){
+  try {
+    dlog('Ekstern scan ('+(source||'ukjent')+'): '+code);
+    // Hvis kamera skanner pågår, stopp for å unngå UI konflikt
+    if(scanning) stopCameraScanner();
+    await handleScan(String(code).trim());
+  } catch(e){ dlog('Ekstern scan feil: '+(e.message||e)); }
+};
+
