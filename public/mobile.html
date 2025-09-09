@@ -100,14 +100,34 @@
       function focusHidden(){ try { hidden.focus(); } catch(_){} }
       document.addEventListener('click', focusHidden);
       focusHidden();
-      let buffer=''; let lastKeyTime=0; const KEY_TIMEOUT=150; // ms mellom tegn for at vi skal anta skanner
-      hidden.addEventListener('keydown', e => {
-        if(e.key==='Enter'){
-          const code = buffer.trim(); buffer=''; if(code) window.dispatchEvent(new CustomEvent('hw-barcode',{ detail: code }));
-          e.preventDefault(); hidden.value=''; return;
+      let buffer=''; let lastKeyTime=0; let autoTimer=null; const KEY_TIMEOUT=120; // ms cutoff mellom tegn for kontinuerlig skann
+      const FLUSH_DELAY=140; // ms uten nye tegn => ferdig skann
+      function flush(reason){
+        const code = buffer.trim();
+        if(code){
+          console.log('[HW SCAN FLUSH]', reason, code);
+          window.dispatchEvent(new CustomEvent('hw-barcode',{ detail: code }));
         }
-        const t = Date.now(); if(t-lastKeyTime > KEY_TIMEOUT) buffer=''; lastKeyTime=t;
-        if(e.key.length===1) buffer += e.key; // bygg streng
+        buffer=''; hidden.value='';
+      }
+      hidden.addEventListener('keydown', e => {
+        const now = Date.now();
+        if(e.key==='Enter' || e.key==='Tab'){ // vanlige suffix
+          e.preventDefault();
+          flush('enter/tab');
+          return;
+        }
+        // Filtrer bort kontrolltaster
+        if(e.key.length===1){
+          if(now - lastKeyTime > KEY_TIMEOUT){
+            // Ny sekvens – hvis buffer hadde innhold flush først (kan være manuell input pause)
+            if(buffer.length>0){ flush('break-before-new'); }
+          }
+          buffer += e.key;
+        }
+        lastKeyTime = now;
+        if(autoTimer) clearTimeout(autoTimer);
+        autoTimer = setTimeout(()=> flush('timeout'), FLUSH_DELAY);
       });
       // WebSocket
       const wsBtn = document.getElementById('ws-indicator');

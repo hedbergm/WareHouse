@@ -231,7 +231,11 @@ window.__handleExternalScan = async function(code, source){
     dlog('Ekstern scan ('+(source||'ukjent')+'): '+code);
     // Hvis kamera skanner pågår, stopp for å unngå UI konflikt
     if(scanning) stopCameraScanner();
-    await handleScan(String(code).trim());
+  const clean = String(code).trim();
+  if(!clean){ dlog('Tom kode ignorert'); return; }
+  // Sett modus automatisk hvis hash mode finnes (bevegelse styres der allerede)
+  if(!scanMode) scanMode='part';
+  await handleScan(clean);
   } catch(e){ dlog('Ekstern scan feil: '+(e.message||e)); }
 };
 
