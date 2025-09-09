@@ -80,50 +80,33 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
   <script src="/mobile.js"></script>
   <script>
-    // Zebra / DataWedge integrasjon (WebSocket + tastatur wedge auto-fokus)
+    // Zebra / DataWedge: keyboard wedge + WebSocket med debug logging
     (function(){
       const partInputProxyId = 'hidden-hw-barcode-input';
       let hidden = document.getElementById(partInputProxyId);
       if(!hidden){
         hidden = document.createElement('input');
-        hidden.type = 'text';
-        hidden.id = partInputProxyId;
-        hidden.autocapitalize = 'off';
-        hidden.autocomplete = 'off';
-        hidden.spellcheck = false;
-        hidden.style.position='fixed';
-        hidden.style.opacity='0';
-        hidden.style.pointerEvents='none';
-        hidden.style.top='-50px';
+        hidden.type='text'; hidden.id=partInputProxyId; hidden.autocomplete='off'; hidden.spellcheck=false; hidden.autocapitalize='off';
+        hidden.style.position='fixed'; hidden.style.opacity='0'; hidden.style.pointerEvents='none'; hidden.style.top='-40px';
         document.body.appendChild(hidden);
       }
       function focusHidden(){ try { hidden.focus(); } catch(_){} }
       document.addEventListener('click', focusHidden);
       focusHidden();
-      let buffer=''; let lastKeyTime=0; let autoTimer=null; const KEY_TIMEOUT=120; // ms cutoff mellom tegn for kontinuerlig skann
-      const FLUSH_DELAY=140; // ms uten nye tegn => ferdig skann
+      // Buffer logikk
+      let buffer=''; let lastKeyTime=0; let autoTimer=null; const KEY_TIMEOUT=120; const FLUSH_DELAY=140;
+      function d(msg){ if(window.dlog) dlog(msg); }
       function flush(reason){
         const code = buffer.trim();
-        if(code){
-          console.log('[HW SCAN FLUSH]', reason, code);
-          window.dispatchEvent(new CustomEvent('hw-barcode',{ detail: code }));
-        }
+        if(code){ d('[HW] '+reason+' => '+code); window.dispatchEvent(new CustomEvent('hw-barcode',{ detail: code })); }
         buffer=''; hidden.value='';
       }
       hidden.addEventListener('keydown', e => {
         const now = Date.now();
-        if(e.key==='Enter' || e.key==='Tab'){ // vanlige suffix
-          e.preventDefault();
-          flush('enter/tab');
-          return;
-        }
-        // Filtrer bort kontrolltaster
+        if(e.key==='Enter' || e.key==='Tab') { e.preventDefault(); flush('enter'); return; }
         if(e.key.length===1){
-          if(now - lastKeyTime > KEY_TIMEOUT){
-            // Ny sekvens – hvis buffer hadde innhold flush først (kan være manuell input pause)
-            if(buffer.length>0){ flush('break-before-new'); }
-          }
-          buffer += e.key;
+          if(now - lastKeyTime > KEY_TIMEOUT){ if(buffer) flush('gap'); }
+          buffer += e.key; d('[HW] key '+e.key+' len='+buffer.length);
         }
         lastKeyTime = now;
         if(autoTimer) clearTimeout(autoTimer);
@@ -131,26 +114,29 @@
       });
       // WebSocket
       const wsBtn = document.getElementById('ws-indicator');
-      function setWsState(state){ if(!wsBtn) return; if(state==='ok'){ wsBtn.textContent='WS ✔'; wsBtn.style.background='#198754'; wsBtn.style.color='#fff'; wsBtn.disabled=true; } else if(state==='err'){ wsBtn.textContent='WS ✖'; wsBtn.style.background='#dc3545'; wsBtn.style.color='#fff'; } else { wsBtn.textContent='WS…'; wsBtn.style.background='#6c757d'; wsBtn.style.color='#fff'; } }
-      let ws=null; let wsUrlBase = (location.protocol==='https:'? 'wss://' : 'ws://') + location.host + '/scan';
+      function setWsState(state){
+        if(!wsBtn) return;
+        if(state==='ok'){ wsBtn.textContent='WS ✔'; wsBtn.style.background='#198754'; wsBtn.disabled=true; d('[WS] tilkoblet'); }
+        else if(state==='err'){ wsBtn.textContent='WS ✖'; wsBtn.style.background='#dc3545'; d('[WS] frakoblet'); }
+        else { wsBtn.textContent='WS…'; wsBtn.style.background='#6c757d'; d('[WS] kobler...'); }
+        wsBtn.style.color='#fff';
+      }
+      let ws=null; const wsUrlBase=(location.protocol==='https:'?'wss://':'ws://')+location.host+'/scan';
       function connect(){
         setWsState('connecting');
         try { ws = new WebSocket(wsUrlBase); } catch(e){ setWsState('err'); return; }
-        ws.onopen = () => setWsState('ok');
-        ws.onclose = () => { setWsState('err'); setTimeout(connect, 4000); };
-        ws.onerror = () => { setWsState('err'); };
-        ws.onmessage = ev => {
-          try { const msg = JSON.parse(ev.data); if(msg.type==='scan' && msg.data){ window.dispatchEvent(new CustomEvent('ws-barcode',{ detail: String(msg.data) })); } } catch(_){ }
-        };
+        ws.onopen = ()=> setWsState('ok');
+        ws.onclose = ()=> { setWsState('err'); setTimeout(connect,4000); };
+        ws.onerror = ()=> setWsState('err');
+        ws.onmessage = ev => { try { const msg = JSON.parse(ev.data); if(msg.type==='scan' && msg.data){ d('[WS] scan '+msg.data); window.dispatchEvent(new CustomEvent('ws-barcode',{ detail:String(msg.data) })); } } catch(_){ } };
       }
+      d('--- Zebra debug init ---');
+      d('HW timeout '+FLUSH_DELAY+'ms, KEY_TIMEOUT '+KEY_TIMEOUT+'ms');
+      d('WS '+wsUrlBase);
       connect();
-      // Felles handler: prioriter stopp av kamera og opprett bevegelse samme som camera handleScan
-      async function injectScan(code, source){
-        // mobile.js eksponerer handleHwScan hvis vi legger det til (patch nedenfor)
-        if(window.__handleExternalScan){ window.__handleExternalScan(code, source); }
-      }
-      window.addEventListener('hw-barcode', e => injectScan(e.detail,'hw'));
-      window.addEventListener('ws-barcode', e => injectScan(e.detail,'ws'));
+      function injectScan(code, source){ if(window.__handleExternalScan) window.__handleExternalScan(code, source); }
+      window.addEventListener('hw-barcode', e=> injectScan(e.detail,'hw'));
+      window.addEventListener('ws-barcode', e=> injectScan(e.detail,'ws'));
     })();
     function applyMode(){
       const hash = location.hash || '';
