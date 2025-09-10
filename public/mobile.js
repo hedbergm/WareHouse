@@ -21,6 +21,8 @@ const mvMessage = document.getElementById('mv-message');
 const mvInfo = document.getElementById('mv-info');
 const debugBtn = document.getElementById('toggle-debug');
 const debugLog = document.getElementById('debug-log');
+const qtyIncBtn = document.getElementById('qty-inc');
+const qtyDecBtn = document.getElementById('qty-dec');
 // Foto/test-kamera fjernet
 
 // Bevegelsesmodus: tving INN eller UT hvis hash inneholder mode=in / mode=out
@@ -70,6 +72,7 @@ async function handleScan(code, src){
   movementPanel.classList.remove('hidden');
   mvMessage.textContent = '';
   mvInfo.style.display='none'; mvInfo.textContent='';
+  try { mvQty.focus(); mvQty.select(); } catch(_){}
   // Hent delinfo (lager + min + beskrivelse)
   dlog && dlog('Henter info for '+code);
   try {
@@ -118,6 +121,13 @@ mvSubmit.addEventListener('click', async () => {
 
 // loadLocationContents removed (fast lokasjon håndteres server-side)
 
+// +/- knapper for antall
+if(qtyIncBtn){ qtyIncBtn.addEventListener('click', ()=> { const v=parseInt(mvQty.value||'0',10)||0; mvQty.value = String(Math.max(1, v+1)); }); }
+if(qtyDecBtn){ qtyDecBtn.addEventListener('click', ()=> { const v=parseInt(mvQty.value||'0',10)||0; mvQty.value = String(Math.max(1, v-1)); }); }
+
+// Enter i antall-feltet lagrer direkte
+if(mvQty){ mvQty.addEventListener('keydown', (e)=> { if(e.key==='Enter'){ e.preventDefault(); mvSubmit.click(); } }); }
+
 // Ekstern (Zebra hardware / WebSocket) skann støtte
 // Denne funksjonen trigges fra mobile.html via window.__handleExternalScan
 window.__handleExternalScan = async function(code, source){
@@ -125,8 +135,13 @@ window.__handleExternalScan = async function(code, source){
     dlog('Ekstern scan ('+(source||'ukjent')+'): '+code);
   const clean = String(code).trim();
   if(!clean){ dlog('Tom kode ignorert'); return; }
-  // Sett modus automatisk hvis hash mode finnes (bevegelse styres der allerede)
-  // scanMode beholdes som 'part'
+  // Hvis bevegelsespanel er åpent og skann er kun tall (1-4 sifre), tolk som antall override
+  if(!movementPanel.classList.contains('hidden') && /^[0-9]{1,4}$/.test(clean)){
+    mvQty.value = String(Math.max(1, parseInt(clean,10)));
+    try { mvQty.focus(); mvQty.select(); } catch(_){}
+    dlog('Tolk skann som antall: '+clean);
+    return;
+  }
   await handleScan(clean, source||'ext');
   } catch(e){ dlog('Ekstern scan feil: '+(e.message||e)); }
 };
