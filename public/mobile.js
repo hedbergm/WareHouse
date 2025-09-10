@@ -54,6 +54,8 @@ if(debugBtn){
 
 // Kamera-funksjoner fjernet
 
+let scanMode = 'part'; // stabil modus – vi skanner kun deler via HW/WS
+
 async function handleScan(code, src){
   lastScan.innerText = 'Del: '+code + (src? ' ['+src.toUpperCase()+']':'' );
   mvPart.value = code;
@@ -121,12 +123,10 @@ mvSubmit.addEventListener('click', async () => {
 window.__handleExternalScan = async function(code, source){
   try {
     dlog('Ekstern scan ('+(source||'ukjent')+'): '+code);
-    // Hvis kamera skanner pågår, stopp for å unngå UI konflikt
-    if(scanning) stopCameraScanner();
   const clean = String(code).trim();
   if(!clean){ dlog('Tom kode ignorert'); return; }
   // Sett modus automatisk hvis hash mode finnes (bevegelse styres der allerede)
-  if(!scanMode) scanMode='part';
+  // scanMode beholdes som 'part'
   await handleScan(clean, source||'ext');
   } catch(e){ dlog('Ekstern scan feil: '+(e.message||e)); }
 };
