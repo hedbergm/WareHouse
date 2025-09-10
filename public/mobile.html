@@ -104,13 +104,37 @@
       hidden.addEventListener('keydown', e => {
         const now = Date.now();
         if(e.key==='Enter' || e.key==='Tab') { e.preventDefault(); flush('enter'); return; }
-        if(e.key.length===1){
+        if(e.key && e.key.length===1){
           if(now - lastKeyTime > KEY_TIMEOUT){ if(buffer) flush('gap'); }
           buffer += e.key; d('[HW] key '+e.key+' len='+buffer.length);
+        }
+        // keyCode fallback for Unidentified
+        if(e.key === 'Unidentified' || !e.key){
+          const code = e.keyCode || e.which;
+          const map = (c)=> {
+            if(c>=48 && c<=57) return String.fromCharCode(c); // 0-9
+            if(c>=65 && c<=90) return String.fromCharCode(c); // A-Z
+            if(c>=96 && c<=105) return String(c-96); // Numpad 0-9
+            if(c===189 || c===109) return '-'; // -
+            return '';
+          };
+          const ch = map(code);
+          if(ch){ if(now - lastKeyTime > KEY_TIMEOUT){ if(buffer) flush('gap'); } buffer += ch; d('[HW] kc '+code+' => '+ch+' len='+buffer.length); }
         }
         lastKeyTime = now;
         if(autoTimer) clearTimeout(autoTimer);
         autoTimer = setTimeout(()=> flush('timeout'), FLUSH_DELAY);
+      });
+      // Also listen to keypress for some keyboards
+      hidden.addEventListener('keypress', e => {
+        const now = Date.now();
+        if(e.key && e.key.length===1){ if(now - lastKeyTime > KEY_TIMEOUT){ if(buffer) flush('gap'); } buffer += e.key; d('[HW] kp '+e.key+' len='+buffer.length); lastKeyTime=now; if(autoTimer) clearTimeout(autoTimer); autoTimer=setTimeout(()=> flush('timeout'), FLUSH_DELAY); }
+      });
+      // Some wedges paste the whole value
+      hidden.addEventListener('input', ()=> {
+        const now = Date.now();
+        const val = (hidden.value||'').trim();
+        if(val && val !== buffer){ buffer = val; d('[HW] input len='+buffer.length); lastKeyTime=now; if(autoTimer) clearTimeout(autoTimer); autoTimer=setTimeout(()=> flush('input-timeout'), FLUSH_DELAY); }
       });
       // Global fallback: hvis wedge ikke går inn i input (fokus tapt), fang keydown på window
       let gBuffer=''; let gLast=0; let gTimer=null; const GLOBAL_TIMEOUT=150; const GLOBAL_FLUSH=160;
@@ -124,9 +148,21 @@
         if(e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA') && e.target.id!==partInputProxyId) return;
         const now = Date.now();
         if(e.key==='Enter' || e.key==='Tab'){ e.preventDefault(); gFlush('enter'); return; }
-        if(e.key.length===1){
+        if(e.key && e.key.length===1){
           if(now - gLast > GLOBAL_TIMEOUT){ if(gBuffer) gFlush('gap'); }
           gBuffer += e.key; d('[HW-G] key '+e.key+' len='+gBuffer.length);
+        }
+        if(e.key === 'Unidentified' || !e.key){
+          const code = e.keyCode || e.which;
+          const map = (c)=> {
+            if(c>=48 && c<=57) return String.fromCharCode(c); // 0-9
+            if(c>=65 && c<=90) return String.fromCharCode(c); // A-Z
+            if(c>=96 && c<=105) return String(c-96); // Numpad 0-9
+            if(c===189 || c===109) return '-';
+            return '';
+          };
+          const ch = map(code);
+          if(ch){ if(now - gLast > GLOBAL_TIMEOUT){ if(gBuffer) gFlush('gap'); } gBuffer += ch; d('[HW-G] kc '+code+' => '+ch+' len='+gBuffer.length); }
         }
         gLast = now;
         if(gTimer) clearTimeout(gTimer);

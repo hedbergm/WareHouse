@@ -163,10 +163,10 @@ function stopCameraScanner(){
   videoEl.classList.remove('scanning-part');
 }
 
-async function handleScan(code){
+async function handleScan(code, src){
   const mode = scanMode; // capture before stopping (stop clears state UI-wise)
   stopCameraScanner();
-  lastScan.innerText = 'Del: '+code;
+  lastScan.innerText = 'Del: '+code + (src? ' ['+src.toUpperCase()+']':'' );
   mvPart.value = code;
   mvQty.value = 1;
   if(movementMode){
@@ -180,8 +180,10 @@ async function handleScan(code){
   mvMessage.textContent = '';
   mvInfo.style.display='none'; mvInfo.textContent='';
   // Hent delinfo (lager + min + beskrivelse)
+  dlog && dlog('Henter info for '+code);
   try {
     const data = await api('/api/stock/'+encodeURIComponent(code));
+    dlog && dlog('Info lastet OK for '+code);
     const part = data.part || {}; const total = data.total || 0;
     const minq = part.min_qty ?? 0;
     const desc = part.description || '';
@@ -201,6 +203,7 @@ async function handleScan(code){
     mvInfo.innerHTML = `<strong>${part.part_number||code}</strong>${desc? ' – '+desc:''}<br>${statusLine}${locLines? '<br>'+locLines:''}`;
     mvInfo.style.display='block';
   } catch(e){
+    dlog && dlog('Info LAST FEIL for '+code+': '+(e.error||e.message||e));
     mvInfo.style.display='block'; mvInfo.innerHTML='<span style="color:#c00">Fant ikke del i systemet (opprettes ved lagring om deler lages et annet sted)</span>';
   }
 }
@@ -235,7 +238,7 @@ window.__handleExternalScan = async function(code, source){
   if(!clean){ dlog('Tom kode ignorert'); return; }
   // Sett modus automatisk hvis hash mode finnes (bevegelse styres der allerede)
   if(!scanMode) scanMode='part';
-  await handleScan(clean);
+  await handleScan(clean, source||'ext');
   } catch(e){ dlog('Ekstern scan feil: '+(e.message||e)); }
 };
 
