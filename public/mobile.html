@@ -9,7 +9,6 @@
     /* mobile specific tweaks */
     body{padding:12px}
     .screen{max-width:720px;margin:0 auto}
-    #video {width:100%;height:auto;border-radius:8px;background:#000}
     .controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
     .hidden{display:none}
     .center{text-align:center}
@@ -24,9 +23,7 @@
 
   <div id="main-screen">
       <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-        <button id="scan-part" class="btn">Skann del</button>
-        <button id="stop-scan" class="btn" disabled>Stopp</button>
-  <button id="ws-indicator" class="btn small" type="button" disabled style="opacity:.7">WS…</button>
+        <button id="ws-indicator" class="btn small" type="button" disabled style="opacity:.7">WS…</button>
       </div>
 
       <div id="kbd-scan-wrap" style="margin-top:10px">
@@ -35,10 +32,7 @@
         <div class="muted" style="font-size:11px;margin-top:4px">Tips: Trykk feltet en gang for fokus, deretter bruk skanneknappen på Zebra.</div>
       </div>
 
-      <div id="scanner-area" style="margin-top:10px">
-  <div id="video" style="aspect-ratio:16/9; background:#000;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#777;font-size:14px">Ingen aktiv skann<div class="scan-guide"></div></div>
-        <div id="scan-status" class="muted" style="margin-top:6px"></div>
-      </div>
+      
 
       <div id="movement-panel" class="hidden" style="margin-top:14px;border:1px solid #e2e2e2;padding:12px;border-radius:8px;background:#fff">
         <h3 style="margin:0 0 8px 0;font-size:16px">Registrer bevegelse</h3>
@@ -82,8 +76,6 @@
     </div>
 
   </div>
-
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
   <script src="/mobile.js"></script>
   <script>
     // Zebra / DataWedge: keyboard wedge + WebSocket med debug logging
