@@ -29,6 +29,12 @@
   <button id="ws-indicator" class="btn small" type="button" disabled style="opacity:.7">WS…</button>
       </div>
 
+      <div id="kbd-scan-wrap" style="margin-top:10px">
+        <label for="kbd-scan" class="muted" style="font-size:12px">Tastatur‑skann (Zebra)</label>
+        <input id="kbd-scan" placeholder="Trykk her og skann…" autocomplete="off" spellcheck="false" inputmode="none" style="width:100%;padding:10px;border:1px solid #dcdfe5;border-radius:8px" />
+        <div class="muted" style="font-size:11px;margin-top:4px">Tips: Trykk feltet en gang for fokus, deretter bruk skanneknappen på Zebra.</div>
+      </div>
+
       <div id="scanner-area" style="margin-top:10px">
   <div id="video" style="aspect-ratio:16/9; background:#000;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#777;font-size:14px">Ingen aktiv skann<div class="scan-guide"></div></div>
         <div id="scan-status" class="muted" style="margin-top:6px"></div>
@@ -179,7 +185,8 @@
       }
       d('[HW] global fallback aktivert');
       // WebSocket
-      const wsBtn = document.getElementById('ws-indicator');
+  const wsBtn = document.getElementById('ws-indicator');
+  const kbdInput = document.getElementById('kbd-scan');
       function setWsState(state){
         if(!wsBtn) return;
         if(state==='ok'){ wsBtn.textContent='WS ✔'; wsBtn.style.background='#198754'; wsBtn.disabled=true; d('[WS] tilkoblet'); }
@@ -203,6 +210,25 @@
       function injectScan(code, source){ if(window.__handleExternalScan) window.__handleExternalScan(code, source); }
       window.addEventListener('hw-barcode', e=> injectScan(e.detail,'hw'));
       window.addEventListener('ws-barcode', e=> injectScan(e.detail,'ws'));
+
+      // Synlig tastaturfelt – fanger hele skann via input/ENTER
+      if(kbdInput){
+        let kbTimer=null; const KBD_FLUSH=140; // ms
+        function kbFlush(reason){
+          const code = (kbdInput.value||'').trim();
+          if(code){ d('[KBD] '+reason+' => '+code); injectScan(code,'hw'); }
+          kbdInput.value='';
+        }
+        kbdInput.addEventListener('keydown', e => {
+          if(e.key==='Enter' || e.key==='Tab'){ e.preventDefault(); kbFlush('enter'); }
+        });
+        kbdInput.addEventListener('input', ()=>{
+          if(kbTimer) clearTimeout(kbTimer);
+          kbTimer = setTimeout(()=> kbFlush('timeout'), KBD_FLUSH);
+        });
+        // Autofokus (kan bli ignorert til bruker trykker; inputmode="none" skal hindre mykt tastatur)
+        setTimeout(()=> { try { kbdInput.focus(); } catch(_){} }, 250);
+      }
     })();
     function applyMode(){
       const hash = location.hash || '';
