@@ -128,6 +128,28 @@ if(qtyDecBtn){ qtyDecBtn.addEventListener('click', ()=> { const v=parseInt(mvQty
 
 // Enter i antall-feltet lagrer direkte; tillat også +/- på fysisk tastatur
 if(mvQty){
+  // Vis talltastatur og aksepter kun sifre
+  try {
+    mvQty.setAttribute('inputmode','numeric');
+    mvQty.setAttribute('pattern','[0-9]*');
+    mvQty.setAttribute('enterkeyhint','done');
+    mvQty.setAttribute('autocomplete','off');
+  } catch(_){}
+  // Filtrer input til bare 0-9, og sørg for minst 1 ved blur
+  mvQty.addEventListener('beforeinput', (e)=>{
+    if(e.inputType === 'insertFromPaste'){
+      const t = (e.data || (e.clipboardData && e.clipboardData.getData && e.clipboardData.getData('text')) || '').replace(/\D+/g,'');
+      if(!t){ e.preventDefault(); return; }
+    }
+  });
+  mvQty.addEventListener('input', ()=>{
+    const digits = (mvQty.value||'').replace(/\D+/g,'');
+    if(mvQty.value !== digits) mvQty.value = digits;
+  });
+  mvQty.addEventListener('blur', ()=>{
+    const v = parseInt(mvQty.value||'0',10) || 0;
+    mvQty.value = String(Math.max(1, v));
+  });
   mvQty.addEventListener('keydown', (e)=> {
     if(e.key==='Enter'){ e.preventDefault(); mvSubmit.click(); }
     if(e.key==='+'){ e.preventDefault(); const v=parseInt(mvQty.value||'0',10)||0; mvQty.value=String(Math.max(1,v+1)); }
