@@ -72,7 +72,8 @@ async function handleScan(code, src){
   movementPanel.classList.remove('hidden');
   mvMessage.textContent = '';
   mvInfo.style.display='none'; mvInfo.textContent='';
-  try { mvQty.focus(); mvQty.select(); } catch(_){}
+  // Ikke auto-fokus på antall (for å unngå mykt tastatur før bruker ønsker det)
+  // Bruker kan trykke i feltet for å få tastatur. Vi beholder verdi=1 som start.
   // Hent delinfo (lager + min + beskrivelse)
   dlog && dlog('Henter info for '+code);
   try {
@@ -125,8 +126,14 @@ mvSubmit.addEventListener('click', async () => {
 if(qtyIncBtn){ qtyIncBtn.addEventListener('click', ()=> { const v=parseInt(mvQty.value||'0',10)||0; mvQty.value = String(Math.max(1, v+1)); }); }
 if(qtyDecBtn){ qtyDecBtn.addEventListener('click', ()=> { const v=parseInt(mvQty.value||'0',10)||0; mvQty.value = String(Math.max(1, v-1)); }); }
 
-// Enter i antall-feltet lagrer direkte
-if(mvQty){ mvQty.addEventListener('keydown', (e)=> { if(e.key==='Enter'){ e.preventDefault(); mvSubmit.click(); } }); }
+// Enter i antall-feltet lagrer direkte; tillat også +/- på fysisk tastatur
+if(mvQty){
+  mvQty.addEventListener('keydown', (e)=> {
+    if(e.key==='Enter'){ e.preventDefault(); mvSubmit.click(); }
+    if(e.key==='+'){ e.preventDefault(); const v=parseInt(mvQty.value||'0',10)||0; mvQty.value=String(Math.max(1,v+1)); }
+    if(e.key==='-'){ e.preventDefault(); const v=parseInt(mvQty.value||'0',10)||0; mvQty.value=String(Math.max(1,v-1)); }
+  });
+}
 
 // Ekstern (Zebra hardware / WebSocket) skann støtte
 // Denne funksjonen trigges fra mobile.html via window.__handleExternalScan

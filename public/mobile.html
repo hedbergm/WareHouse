@@ -28,7 +28,7 @@
 
       <div id="kbd-scan-wrap" style="margin-top:10px">
         <label for="kbd-scan" class="muted" style="font-size:12px">Tastatur‑skann (Zebra)</label>
-        <input id="kbd-scan" placeholder="Trykk her og skann…" autocomplete="off" spellcheck="false" inputmode="none" style="width:100%;padding:10px;border:1px solid #dcdfe5;border-radius:8px" />
+  <input id="kbd-scan" placeholder="Trykk her og skann…" autocomplete="off" spellcheck="false" inputmode="none" tabindex="0" readonly style="width:100%;padding:10px;border:1px solid #dcdfe5;border-radius:8px" />
         <div class="muted" style="font-size:11px;margin-top:4px">Tips: Trykk feltet en gang for fokus, deretter bruk skanneknappen på Zebra.</div>
       </div>
 
@@ -47,7 +47,7 @@
               <label style="font-size:12px">Antall</label>
               <div style="display:flex;gap:6px;align-items:center">
                 <button id="qty-dec" class="btn small" type="button" aria-label="Minus">−</button>
-                <input id="mv-qty" type="number" value="1" min="1" style="flex:1;width:100%">
+                <input id="mv-qty" type="number" value="1" min="1" step="1" inputmode="numeric" pattern="[0-9]*" style="flex:1;width:100%">
                 <button id="qty-inc" class="btn small" type="button" aria-label="Pluss">+</button>
               </div>
             </div>
@@ -215,6 +215,9 @@
           if(code){ d('[KBD] '+reason+' => '+code); injectScan(code,'hw'); }
           kbdInput.value='';
         }
+        // Tillat hardware keys, men ikke åpne myk tast – fjern readonly rett før keydown
+        kbdInput.addEventListener('focus', ()=> { try { kbdInput.readOnly=false; } catch(_){} });
+        kbdInput.addEventListener('blur',  ()=> { try { kbdInput.readOnly=true; } catch(_){} });
         kbdInput.addEventListener('keydown', e => {
           if(e.key==='Enter' || e.key==='Tab'){ e.preventDefault(); kbFlush('enter'); }
         });
@@ -222,8 +225,7 @@
           if(kbTimer) clearTimeout(kbTimer);
           kbTimer = setTimeout(()=> kbFlush('timeout'), KBD_FLUSH);
         });
-        // Autofokus (kan bli ignorert til bruker trykker; inputmode="none" skal hindre mykt tastatur)
-        setTimeout(()=> { try { kbdInput.focus(); } catch(_){} }, 250);
+        // Ikke auto-fokus; brukeren trykker selv for å åpne for hardware input
       }
     })();
     function applyMode(){
