@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="no">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Importér lokasjoner fra Excel</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Arial,sans-serif;padding:16px}
+    .row{margin:8px 0}
+    pre{background:#f6f6f6;padding:8px;white-space:pre-wrap;max-height:55vh;overflow:auto}
+    .result{margin-top:12px}
+    .ok{color:green}.err{color:#b00020}
+    .muted{color:#666}
+    .hint{font-size:13px}
+  </style>
+</head>
+<body>
+  <h1>Importér lokasjoner fra Excel</h1>
+  <p class="hint">Støttede kolonner (første ark): <b>Navn</b>, <b>Barcode</b>. Fallback: første kolonne = Navn, andre = Barcode (hvis ingen headere).
+  Du må være innlogget.</p>
+
+  <div class="row">
+    <input type="file" id="file" accept=".xlsx,.xls,.csv" />
+    <button id="preview">Forhåndsvis</button>
+    <button id="apply">Apply (skriv til DB)</button>
+  </div>
+  <div id="status" class="muted"></div>
+  <div class="result">
+    <pre id="out"></pre>
+  </div>
+
+<script>
+async function send(apply){
+  const f = document.getElementById('file').files[0];
+  const status = document.getElementById('status');
+  const out = document.getElementById('out');
+  if(!f){ status.innerHTML = '<span class="err">Velg en fil først</span>'; return; }
+  status.textContent = (apply? 'Skriver til DB...' : 'Laster opp og parser...');
+  out.textContent = '';
+  const fd = new FormData();
+  fd.append('file', f);
+  try{
+    const r = await fetch('/api/locations/import-excel' + (apply ? '?apply=1' : ''), { method:'POST', body: fd });
+    if(r.status === 401){
+      status.innerHTML = '<span class="err">Ikke innlogget. <a href="/login.html">Logg inn</a> og prøv igjen.</span>';
+      out.textContent = '';
+      return;
+    }
+    const j = await r.json();
+    if(!r.ok || !j.ok){
+      status.innerHTML = '<span class="err">Feil: '+ (j.error || r.status) +'</span>';
+      out.textContent = JSON.stringify(j, null, 2);
+      return;
+    }
+    status.innerHTML = apply ? '<span class="ok">Ferdig. Applied: '+ (j.applied||0) +'</span>' : '<span class="ok">Forhåndsvisning</span>';
+    out.textContent = JSON.stringify(j, null, 2);
+  }catch(e){
+    status.innerHTML = '<span class="err">'+ e.message +'</span>';
+  }
+}
+
+document.getElementById('preview').addEventListener('click', ()=> send(false));
+
+document.getElementById('apply').addEventListener('click', ()=> {
+  if(confirm('Er du sikker på at du vil skrive data til databasen?')) send(true);
+});
+</script>
+</body>
+</html>

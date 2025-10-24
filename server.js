@@ -950,6 +950,103 @@ app.get('/api/debug/alert-state', requireAuth, (req,res)=> {
   res.json({ alertState });
 });
 
+// === Excel import for locations (Navn/Name + Barcode) ===
+const LOC_COLS = {
+  name: ['navn','name','lokasjon','location','plass','hylle'],
+  barcode: ['barcode','strekkode','kode','code','locbarcode']
+};
+
+app.post('/api/locations/import-excel', requireAuth, upload.single('file'), async (req, res) => {
+  try {
+    if(!req.file) return res.status(400).json({ ok:false, error:'Mangler fil (felt: file)' });
+    const apply = req.query.apply === '1';
+    const wb = XLSX.read(req.file.buffer, { type:'buffer' });
+    const sheetName = wb.SheetNames[0];
+    if(!sheetName) return res.status(400).json({ ok:false, error:'Tom arbeidsbok' });
+    const sheet = wb.Sheets[sheetName];
+    let rows = XLSX.utils.sheet_to_json(sheet, { defval:'' });
+    if(!rows.length){
+      return res.status(400).json({ ok:false, error:'Ingen rader i første ark' });
+    }
+    let keys = Object.keys(rows[0]||{});
+    let colName = guessCol(keys, LOC_COLS.name);
+    let colBarcode = guessCol(keys, LOC_COLS.barcode);
+
+    let items = [];
+    if(colName && colBarcode){
+      for(const r of rows){
+        const name = String(r[colName]||'').trim();
+        const barcode = String(r[colBarcode]||'').trim();
+        if(!name && !barcode) continue;
+        items.push({ name, barcode });
+      }
+    } else {
+      // Headerless fallback: anta to første kolonner = Navn, Barcode
+      const aoa = XLSX.utils.sheet_to_json(sheet, { header:1, raw:false, defval:'' });
+      for(const r of aoa){
+        const c0 = (r && r[0]) ? String(r[0]).trim() : '';
+        const c1 = (r && r[1]) ? String(r[1]).trim() : '';
+        if(!c0 && !c1) continue;
+        // hopp over header-rad
+        const n0 = normalizeKey(c0);
+        const n1 = normalizeKey(c1);
+        if(['navn','name','lokasjon','location'].includes(n0) || ['barcode','strekkode','kode','code'].includes(n1)) continue;
+        items.push({ name: c0, barcode: c1 });
+      }
+    }
+    // Rens og dedupliser på barcode (siste vinner)
+    const map = new Map();
+    for(const it of items){
+      const name = String(it.name||'').trim();
+      const barcode = String(it.barcode||'').trim();
+      if(!barcode) continue; // barcode kreves for oppretting/oppdatering
+      map.set(barcode, { name, barcode });
+    }
+    items = [...map.values()];
+    if(!items.length){
+      return res.status(400).json({ ok:false, error:'Ingen gyldige rader (krever Barcode, Navn anbefales)' });
+    }
+
+    if(!apply){
+      return res.json({ ok:true, sheet: sheetName, count: items.length, applied:0, items: items.slice(0, 200) });
+    }
+
+    const results = [];
+    let appliedCount = 0;
+    for(const it of items){
+      try {
+        // Finn eksisterende etter barcode
+        const existing = await new Promise((resv,rej)=> db.get(`SELECT * FROM locations WHERE barcode = ${qMarks([''])[0]}`, [it.barcode], (e,r)=> e?rej(e):resv(r)));
+        if(existing){
+          const newName = it.name || existing.name;
+          const sql = usePg ? 'UPDATE locations SET name = $1 WHERE id = $2' : 'UPDATE locations SET name = ? WHERE id = ?';
+          await new Promise((resv,rej)=> db.run(sql, [newName, existing.id], (e)=> e?rej(e):resv()));
+          results.push({ ok:true, action:'update', id: existing.id, name: newName, barcode: existing.barcode });
+        } else {
+          if(!it.name){
+            // name mangler – bruk barcode som name som fallback
+            it.name = it.barcode;
+          }
+          if(usePg){
+            const row = await pgdb.get('INSERT INTO locations (name, barcode) VALUES ($1,$2) RETURNING id', [it.name, it.barcode]);
+            results.push({ ok:true, action:'insert', id: row.id, name: it.name, barcode: it.barcode });
+          } else {
+            await new Promise((resv,rej)=> db.run('INSERT INTO locations (name, barcode) VALUES (?,?)', [it.name, it.barcode], function(e){ return e?rej(e):resv(this.lastID); }));
+            results.push({ ok:true, action:'insert', name: it.name, barcode: it.barcode });
+          }
+        }
+        appliedCount++;
+      } catch(e){
+        results.push({ ok:false, error: e.message, name: it.name, barcode: it.barcode });
+      }
+    }
+
+    return res.json({ ok:true, sheet: sheetName, count: items.length, applied: appliedCount, results });
+  } catch(e){
+    return res.status(500).json({ ok:false, error: e.message });
+  }
+});
+
 // --- WebSocket (Zebra DataWedge) støtte ---
 // DataWedge kan konfigureres til å sende Intents til en liten Android WebView wrapper
 // men enklere er å bruke DataWedge WF (IP) Plugin eller en mellom-app som videresender
