@@ -864,25 +864,50 @@ app.post('/api/inventory/import-excel', requireAuth, upload.single('file'), asyn
     const wb = XLSX.read(req.file.buffer, { type:'buffer' });
     const sheetName = wb.SheetNames[0];
     if(!sheetName) return res.status(400).json({ ok:false, error:'Tom arbeidsbok' });
-    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval:'' });
+    const sheet = wb.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval:'' });
     if(!rows.length) return res.status(400).json({ ok:false, error:'Ingen rader i første ark' });
     const keys = Object.keys(rows[0]||{});
-  const colPart = guessCol(keys, COLS.part);
-  const colDesc = guessCol(keys, COLS.desc);
-  const colMin  = guessCol(keys, COLS.min);
-  const colQty  = guessCol(keys, COLS.qty);
-  const colLoc  = guessCol(keys, COLS.loc);
-  if(!colPart) return res.status(400).json({ ok:false, error:'Mangler påkrevd kolonne for delenummer', need:{ part:COLS.part }, have: keys });
+    let colPart = guessCol(keys, COLS.part);
+    const colDesc = guessCol(keys, COLS.desc);
+    const colMin  = guessCol(keys, COLS.min);
+    const colQty  = guessCol(keys, COLS.qty);
+    const colLoc  = guessCol(keys, COLS.loc);
+    if(!colPart){
+      // Fallback: anta første to kolonner = (Delenummer, Beskrivelse)
+      const aoa = XLSX.utils.sheet_to_json(sheet, { header:1, raw:false, defval:'' });
+      const items = [];
+      for(const r of aoa){
+        const part = String((r && r[0]) || '').trim();
+        if(!part || ['delenummer','part','varenr','artnr','sku'].includes(normalizeKey(part))) continue;
+        const desc = String((r && r[1]) || '').trim();
+        items.push({ part_number: part, description: desc || undefined });
+      }
+      if(items.length){
+        if(apply){
+          let applied = 0; const results = [];
+          for(const it of items){
+            try{ const part = await upsertPartPartial({ pn: it.part_number, description: it.description }); applied++; results.push({ ok:true, part_number: part.part_number }); }
+            catch(e){ results.push({ ok:false, error:e.message, part_number: it.part_number }); }
+          }
+          return res.json({ ok:true, sheet: sheetName, count: items.length, applied, results });
+        } else {
+          return res.json({ ok:true, sheet: sheetName, count: items.length, applied:0, items: items.slice(0,100) });
+        }
+      }
+      return res.status(400).json({ ok:false, error:'Mangler påkrevd kolonne for delenummer', need:{ part:COLS.part }, have: keys });
+    }
+    const srcRows = rows;
     const items = [];
-    for(const r of rows){
+    for(const r of srcRows){
       const part = String(r[colPart]||'').trim();
       if(!part) continue;
-      const desc = colDesc ? String(r[colDesc]??'').trim() : undefined;
+      const desc = colDesc && !fallbackUsed ? String(r[colDesc]??'').trim() : undefined;
       const minRaw = colMin ? String(r[colMin]??'').trim() : undefined;
       const qtyRaw = colQty ? String(r[colQty]??'').trim() : undefined;
       const minv = (minRaw===undefined || minRaw==='') ? undefined : (parseInt(minRaw.replace(/,/g,'.'),10));
       const qtyv = (qtyRaw===undefined || qtyRaw==='') ? undefined : (parseInt(qtyRaw.replace(/,/g,'.'),10));
-      const loc  = colLoc ? String(r[colLoc]??'').trim() : undefined;
+      const loc  = colLoc && !fallbackUsed ? String(r[colLoc]??'').trim() : undefined;
       items.push({ part_number: part, description: desc, min_qty: (minv==null||Number.isNaN(minv))? undefined : Math.max(0,minv), qty: (qtyv==null||Number.isNaN(qtyv))? undefined : Math.max(0,qtyv), location_code: (loc && loc.length? loc: undefined) });
     }
     if(!items.length) return res.status(400).json({ ok:false, error:'Ingen gyldige rader' });
