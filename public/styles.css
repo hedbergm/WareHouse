@@ -41,6 +41,7 @@ label{font-size:12px; color:var(--muted); display:block; margin-bottom:6px}
 .list{margin-top:12px}
 .part-row{display:flex;align-items:center;justify-content:space-between;padding:10px;border-top:1px solid #f0f0f0}
 .part-left{flex:1}
+.part-right{display:inline-flex;flex-direction:column;align-items:flex-end}
 .part-right img{height:48px}
 .desc{color:var(--muted);font-size:13px}
 .meta{font-size:12px;color:var(--muted);margin-top:6px}
