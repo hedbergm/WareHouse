@@ -6,6 +6,8 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const bwipjs = require('bwip-js');
 const nodemailer = require('nodemailer');
+const multer = require('multer');
+const XLSX = require('xlsx');
 const dbSqlite = require('./db');
 const pgdb = require('./pgdb');
 const usePg = pgdb.enabled();
@@ -70,6 +72,8 @@ const db = {
 
 const path = require('path');
 const app = express();
+// Expose db on app for utilities if needed elsewhere
+app.set('db', db);
 app.use(cors());
 app.use(bodyParser.json());
 app.use(session({
@@ -78,6 +82,9 @@ app.use(session({
   saveUninitialized: false,
   cookie: { maxAge: 1000*60*60*8 }
 }));
+
+// File upload (in-memory)
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 // Auth middleware
 function requireAuth(req,res,next){
@@ -758,6 +765,144 @@ app.get('/api/debug/status', requireAuth, (req,res) => {
       if(--remaining===0) res.json(status);
     });
   });
+});
+
+// === Excel import av lager (Delenummer, Beskrivelse, Min Antall, Antall, Fast Lokasjon) ===
+function normalizeKey(k){ return String(k||'').toLowerCase().replace(/[^a-z0-9]+/g,''); }
+const COLS = {
+  part: ['delenummer','delenr','part','partno','part_number','varenr','artnr','sku','del'],
+  desc: ['beskrivelse','description','desc','tekst','navn','name'],
+  min:  ['minantall','min_qty','minqty','minquantity','minlager','min','minant'],
+  qty:  ['antall','qty','quantity','onhand','on_hand','beholdning','stock'],
+  loc:  ['fastlokasjon','fastlok','defaultlocation','default_location','lokasjon','location','plass','hylle','barcode']
+};
+
+function guessCol(keys, candidates){
+  const norm = keys.map(k=> ({ raw:k, n: normalizeKey(k) }));
+  const cset = new Set(candidates.map(normalizeKey));
+  const hit = norm.find(k=> cset.has(k.n));
+  return hit ? hit.raw : null;
+}
+
+async function getOrCreateLocationByCode(code){
+  const codeStr = String(code||'').trim(); if(!codeStr) return null;
+  let loc = await new Promise((res,rej)=> db.get(`SELECT * FROM locations WHERE barcode = ${qMarks([''])[0]} OR name = ${qMarks([''])[0]}`,[codeStr, codeStr],(e,r)=> e?rej(e):res(r)));
+  if(loc) return loc;
+  // Create with name=barcode when missing
+  if(usePg){
+    try {
+      const row = await pgdb.get('INSERT INTO locations (name, barcode) VALUES ($1,$2) RETURNING id, name, barcode', [codeStr, codeStr]);
+      return row;
+    } catch(e){
+      // Race: try read again
+      loc = await new Promise((res,rej)=> db.get(`SELECT * FROM locations WHERE barcode = ${qMarks([''])[0]}`,[codeStr],(er,rr)=> er?rej(er):res(rr)));
+      return loc;
+    }
+  } else {
+    await new Promise((resolve,reject)=> db.run('INSERT OR IGNORE INTO locations (name, barcode) VALUES (?,?)',[codeStr, codeStr], (err)=> err?reject(err):resolve()));
+    loc = await new Promise((res,rej)=> db.get('SELECT * FROM locations WHERE barcode = ?',[codeStr],(e,r)=> e?rej(e):res(r)));
+    return loc;
+  }
+}
+
+async function getOrCreatePart(pn, description, min_qty, defaultLocId){
+  const part_number = String(pn||'').trim(); if(!part_number) return null;
+  let part = await getPartByNumber(part_number);
+  if(part){
+    // Update description/min_qty/default_location_id when provided
+    const minq = isNaN(parseInt(min_qty,10)) ? (part.min_qty||0) : parseInt(min_qty,10);
+    const sql = usePg ? 'UPDATE parts SET description=$1, min_qty=$2, default_location_id=$3 WHERE id=$4'
+                      : 'UPDATE parts SET description=?, min_qty=?, default_location_id=? WHERE id=?';
+    await new Promise((res,rej)=> db.run(sql,[description||'', minq, defaultLocId||null, part.id], (e)=> e?rej(e):res()));
+    // Read back
+    part = await getPartByNumber(part_number);
+    return part;
+  }
+  if(usePg){
+    const row = await pgdb.get('INSERT INTO parts (part_number, description, min_qty, default_location_id) VALUES ($1,$2,$3,$4) RETURNING id, part_number, description, min_qty, default_location_id', [part_number, description||'', parseInt(min_qty||'0',10)||0, defaultLocId||null]);
+    return row;
+  } else {
+    await new Promise((resolve,reject)=> db.run('INSERT INTO parts (part_number, description, min_qty, default_location_id) VALUES (?,?,?,?)',[part_number, description||'', parseInt(min_qty||'0',10)||0, defaultLocId||null], (e)=> e?reject(e):resolve()));
+    const p = await getPartByNumber(part_number);
+    return p;
+  }
+}
+
+async function setStockQty(partId, locId, qty){
+  const q = Math.max(0, parseInt(qty||'0',10)||0);
+  const existing = await new Promise((res,rej)=> db.get(`SELECT id, qty FROM stock WHERE part_id = ${qMarks([''])[0]} AND location_id = ${qMarks([''])[0]}`, [partId, locId], (e,r)=> e?rej(e):res(r)));
+  if(existing){
+    const sql = usePg ? 'UPDATE stock SET qty = $1 WHERE id = $2' : 'UPDATE stock SET qty = ? WHERE id = ?';
+    await new Promise((res,rej)=> db.run(sql,[q, existing.id], (e)=> e?rej(e):res()));
+    return { updated:true, inserted:false, before: existing.qty, after: q };
+  } else {
+    if(usePg){
+      await pgdb.run('INSERT INTO stock (part_id, location_id, qty) VALUES ($1,$2,$3)', [partId, locId, q]);
+    } else {
+      await new Promise((res,rej)=> db.run('INSERT OR IGNORE INTO stock (part_id, location_id, qty) VALUES (?,?,?)', [partId, locId, q], (e)=> e?rej(e):res()));
+    }
+    return { updated:false, inserted:true, before: 0, after: q };
+  }
+}
+
+app.post('/api/inventory/import-excel', requireAuth, upload.single('file'), async (req, res) => {
+  try {
+    if(!req.file) return res.status(400).json({ ok:false, error:'Mangler fil (felt: file)' });
+    const apply = req.query.apply === '1';
+    const wb = XLSX.read(req.file.buffer, { type:'buffer' });
+    const sheetName = wb.SheetNames[0];
+    if(!sheetName) return res.status(400).json({ ok:false, error:'Tom arbeidsbok' });
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval:'' });
+    if(!rows.length) return res.status(400).json({ ok:false, error:'Ingen rader i første ark' });
+    const keys = Object.keys(rows[0]||{});
+    const colPart = guessCol(keys, COLS.part);
+    const colDesc = guessCol(keys, COLS.desc);
+    const colMin  = guessCol(keys, COLS.min);
+    const colQty  = guessCol(keys, COLS.qty);
+    const colLoc  = guessCol(keys, COLS.loc);
+    if(!colPart || !colQty) return res.status(400).json({ ok:false, error:'Mangler påkrevde kolonner', need:{ part:COLS.part, qty:COLS.qty }, have: keys });
+    const items = [];
+    for(const r of rows){
+      const part = String(r[colPart]||'').trim();
+      if(!part) continue;
+      const desc = colDesc ? String(r[colDesc]||'').trim() : '';
+      const minv = colMin ? (parseInt(String(r[colMin]).replace(/,/g,'.'),10)||0) : 0;
+      const qtyv = parseInt(String(r[colQty]).replace(/,/g,'.'),10)||0;
+      const loc  = colLoc ? String(r[colLoc]||'').trim() : '';
+      items.push({ part_number: part, description: desc, min_qty: Math.max(0,minv), qty: Math.max(0,qtyv), location_code: loc });
+    }
+    if(!items.length) return res.status(400).json({ ok:false, error:'Ingen gyldige rader' });
+
+    const results = [];
+    let applied = 0;
+    if(apply){
+      for(const it of items){
+        try{
+          let loc = null;
+          if(it.location_code){
+            loc = await getOrCreateLocationByCode(it.location_code);
+          }
+          // If no location specified but part already has default, reuse
+          const existing = await getPartByNumber(it.part_number);
+          let defaultLocId = loc ? loc.id : (existing ? existing.default_location_id : null);
+          const part = await getOrCreatePart(it.part_number, it.description, it.min_qty, defaultLocId||null);
+          // Ensure stock row exists for fixed location and set qty
+          let stockRes = null;
+          if(defaultLocId){
+            stockRes = await setStockQty(part.id, defaultLocId, it.qty);
+          }
+          applied++;
+          results.push({ ok:true, part_number: part.part_number, default_location_id: defaultLocId||null, stock: stockRes, min_qty: part.min_qty });
+        } catch(e){
+          results.push({ ok:false, error: e.message, part_number: it.part_number });
+        }
+      }
+    }
+
+    res.json({ ok:true, sheet: sheetName, count: items.length, applied: apply ? applied : 0, items: apply ? undefined : items.slice(0, 100), results: apply ? results : undefined });
+  } catch(e){
+    res.status(500).json({ ok:false, error: e.message });
+  }
 });
 
 // Debug endpoint for alert state (in-memory)
