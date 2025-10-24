@@ -902,12 +902,12 @@ app.post('/api/inventory/import-excel', requireAuth, upload.single('file'), asyn
     for(const r of srcRows){
       const part = String(r[colPart]||'').trim();
       if(!part) continue;
-      const desc = colDesc && !fallbackUsed ? String(r[colDesc]??'').trim() : undefined;
+  const desc = colDesc ? String(r[colDesc]??'').trim() : undefined;
       const minRaw = colMin ? String(r[colMin]??'').trim() : undefined;
       const qtyRaw = colQty ? String(r[colQty]??'').trim() : undefined;
       const minv = (minRaw===undefined || minRaw==='') ? undefined : (parseInt(minRaw.replace(/,/g,'.'),10));
       const qtyv = (qtyRaw===undefined || qtyRaw==='') ? undefined : (parseInt(qtyRaw.replace(/,/g,'.'),10));
-      const loc  = colLoc && !fallbackUsed ? String(r[colLoc]??'').trim() : undefined;
+  const loc  = colLoc ? String(r[colLoc]??'').trim() : undefined;
       items.push({ part_number: part, description: desc, min_qty: (minv==null||Number.isNaN(minv))? undefined : Math.max(0,minv), qty: (qtyv==null||Number.isNaN(qtyv))? undefined : Math.max(0,qtyv), location_code: (loc && loc.length? loc: undefined) });
     }
     if(!items.length) return res.status(400).json({ ok:false, error:'Ingen gyldige rader' });
