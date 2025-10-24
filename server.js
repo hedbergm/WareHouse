@@ -805,24 +805,36 @@ async function getOrCreateLocationByCode(code){
   }
 }
 
-async function getOrCreatePart(pn, description, min_qty, defaultLocId){
+async function upsertPartPartial({ pn, description, min_qty, defaultLocId }){
   const part_number = String(pn||'').trim(); if(!part_number) return null;
   let part = await getPartByNumber(part_number);
   if(part){
-    // Update description/min_qty/default_location_id when provided
-    const minq = isNaN(parseInt(min_qty,10)) ? (part.min_qty||0) : parseInt(min_qty,10);
-    const sql = usePg ? 'UPDATE parts SET description=$1, min_qty=$2, default_location_id=$3 WHERE id=$4'
-                      : 'UPDATE parts SET description=?, min_qty=?, default_location_id=? WHERE id=?';
-    await new Promise((res,rej)=> db.run(sql,[description||'', minq, defaultLocId||null, part.id], (e)=> e?rej(e):res()));
-    // Read back
-    part = await getPartByNumber(part_number);
+    // Build dynamic UPDATE only for provided fields
+    const sets = []; const params = [];
+    if(typeof description === 'string') { sets.push('description = ' + (usePg? '$'+(params.length+1) : '?')); params.push(description); }
+    if(min_qty !== undefined && min_qty !== null && !Number.isNaN(parseInt(min_qty,10))) {
+      sets.push('min_qty = ' + (usePg? '$'+(params.length+1) : '?')); params.push(parseInt(min_qty,10));
+    }
+    if(defaultLocId !== undefined) { // allow explicit null to clear if caller really passes null
+      sets.push('default_location_id = ' + (usePg? '$'+(params.length+1) : '?')); params.push(defaultLocId);
+    }
+    if(sets.length){
+      const sql = `UPDATE parts SET ${sets.join(', ')} WHERE id = ${usePg? '$'+(params.length+1) : '?'}`;
+      params.push(part.id);
+      await new Promise((res,rej)=> db.run(sql, params, (e)=> e?rej(e):res()));
+      part = await getPartByNumber(part_number);
+    }
     return part;
   }
+  // Insert new part; use defaults when fields missing
+  const insDesc = typeof description === 'string' ? description : '';
+  const insMin = (min_qty !== undefined && min_qty !== null && !Number.isNaN(parseInt(min_qty,10))) ? parseInt(min_qty,10) : 0;
+  const insLoc = (defaultLocId !== undefined) ? defaultLocId : null;
   if(usePg){
-    const row = await pgdb.get('INSERT INTO parts (part_number, description, min_qty, default_location_id) VALUES ($1,$2,$3,$4) RETURNING id, part_number, description, min_qty, default_location_id', [part_number, description||'', parseInt(min_qty||'0',10)||0, defaultLocId||null]);
+    const row = await pgdb.get('INSERT INTO parts (part_number, description, min_qty, default_location_id) VALUES ($1,$2,$3,$4) RETURNING id, part_number, description, min_qty, default_location_id', [part_number, insDesc, insMin, insLoc]);
     return row;
   } else {
-    await new Promise((resolve,reject)=> db.run('INSERT INTO parts (part_number, description, min_qty, default_location_id) VALUES (?,?,?,?)',[part_number, description||'', parseInt(min_qty||'0',10)||0, defaultLocId||null], (e)=> e?reject(e):resolve()));
+    await new Promise((resolve,reject)=> db.run('INSERT INTO parts (part_number, description, min_qty, default_location_id) VALUES (?,?,?,?)',[part_number, insDesc, insMin, insLoc], (e)=> e?reject(e):resolve()));
     const p = await getPartByNumber(part_number);
     return p;
   }
@@ -855,21 +867,23 @@ app.post('/api/inventory/import-excel', requireAuth, upload.single('file'), asyn
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval:'' });
     if(!rows.length) return res.status(400).json({ ok:false, error:'Ingen rader i første ark' });
     const keys = Object.keys(rows[0]||{});
-    const colPart = guessCol(keys, COLS.part);
-    const colDesc = guessCol(keys, COLS.desc);
-    const colMin  = guessCol(keys, COLS.min);
-    const colQty  = guessCol(keys, COLS.qty);
-    const colLoc  = guessCol(keys, COLS.loc);
-    if(!colPart || !colQty) return res.status(400).json({ ok:false, error:'Mangler påkrevde kolonner', need:{ part:COLS.part, qty:COLS.qty }, have: keys });
+  const colPart = guessCol(keys, COLS.part);
+  const colDesc = guessCol(keys, COLS.desc);
+  const colMin  = guessCol(keys, COLS.min);
+  const colQty  = guessCol(keys, COLS.qty);
+  const colLoc  = guessCol(keys, COLS.loc);
+  if(!colPart) return res.status(400).json({ ok:false, error:'Mangler påkrevd kolonne for delenummer', need:{ part:COLS.part }, have: keys });
     const items = [];
     for(const r of rows){
       const part = String(r[colPart]||'').trim();
       if(!part) continue;
-      const desc = colDesc ? String(r[colDesc]||'').trim() : '';
-      const minv = colMin ? (parseInt(String(r[colMin]).replace(/,/g,'.'),10)||0) : 0;
-      const qtyv = parseInt(String(r[colQty]).replace(/,/g,'.'),10)||0;
-      const loc  = colLoc ? String(r[colLoc]||'').trim() : '';
-      items.push({ part_number: part, description: desc, min_qty: Math.max(0,minv), qty: Math.max(0,qtyv), location_code: loc });
+      const desc = colDesc ? String(r[colDesc]??'').trim() : undefined;
+      const minRaw = colMin ? String(r[colMin]??'').trim() : undefined;
+      const qtyRaw = colQty ? String(r[colQty]??'').trim() : undefined;
+      const minv = (minRaw===undefined || minRaw==='') ? undefined : (parseInt(minRaw.replace(/,/g,'.'),10));
+      const qtyv = (qtyRaw===undefined || qtyRaw==='') ? undefined : (parseInt(qtyRaw.replace(/,/g,'.'),10));
+      const loc  = colLoc ? String(r[colLoc]??'').trim() : undefined;
+      items.push({ part_number: part, description: desc, min_qty: (minv==null||Number.isNaN(minv))? undefined : Math.max(0,minv), qty: (qtyv==null||Number.isNaN(qtyv))? undefined : Math.max(0,qtyv), location_code: (loc && loc.length? loc: undefined) });
     }
     if(!items.length) return res.status(400).json({ ok:false, error:'Ingen gyldige rader' });
 
@@ -879,20 +893,21 @@ app.post('/api/inventory/import-excel', requireAuth, upload.single('file'), asyn
       for(const it of items){
         try{
           let loc = null;
+          let defaultLocIdParam;
           if(it.location_code){
             loc = await getOrCreateLocationByCode(it.location_code);
+            defaultLocIdParam = loc ? loc.id : null; // explicit set when provided
           }
-          // If no location specified but part already has default, reuse
           const existing = await getPartByNumber(it.part_number);
-          let defaultLocId = loc ? loc.id : (existing ? existing.default_location_id : null);
-          const part = await getOrCreatePart(it.part_number, it.description, it.min_qty, defaultLocId||null);
-          // Ensure stock row exists for fixed location and set qty
+          const part = await upsertPartPartial({ pn: it.part_number, description: it.description, min_qty: it.min_qty, defaultLocId: (defaultLocIdParam !== undefined ? defaultLocIdParam : undefined) });
+          // Only set stock if qty provided in file; use explicit loc if provided, else use part's default
           let stockRes = null;
-          if(defaultLocId){
-            stockRes = await setStockQty(part.id, defaultLocId, it.qty);
+          if(it.qty !== undefined){
+            const locId = (defaultLocIdParam !== undefined ? defaultLocIdParam : (part && part.default_location_id ? part.default_location_id : null));
+            if(locId){ stockRes = await setStockQty(part.id, locId, it.qty); }
           }
           applied++;
-          results.push({ ok:true, part_number: part.part_number, default_location_id: defaultLocId||null, stock: stockRes, min_qty: part.min_qty });
+          results.push({ ok:true, part_number: part.part_number, default_location_id: part.default_location_id||null, stock: stockRes, min_qty: part.min_qty });
         } catch(e){
           results.push({ ok:false, error: e.message, part_number: it.part_number });
         }
