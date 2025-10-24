@@ -41,6 +41,11 @@ async function send(apply){
   fd.append('file', f);
   try{
     const r = await fetch('/api/inventory/import-excel' + (apply ? '?apply=1' : ''), { method:'POST', body: fd });
+    if(r.status === 401){
+      status.innerHTML = '<span class="err">Ikke innlogget. <a href="/login.html">Logg inn</a> og prøv igjen.</span>';
+      out.textContent = '';
+      return;
+    }
     const j = await r.json();
     if(!r.ok || !j.ok){
       status.innerHTML = '<span class="err">Feil: '+ (j.error || r.status) +'</span>';
