@@ -576,6 +576,37 @@ app.post('/api/stock/scan', requireAuth, async (req, res) => {
   }
 });
 
+// Set exact stock quantity at a specific location for a part (admin/edit use)
+app.post('/api/stock/set', requireAuth, async (req, res) => {
+  try {
+    const { part_number, location_barcode, qty } = req.body || {};
+    if(!part_number) return res.status(400).json({ error: 'part_number required' });
+    if(location_barcode == null || location_barcode === '') return res.status(400).json({ error: 'location_barcode required' });
+    const q = parseInt(qty,10);
+    if(Number.isNaN(q) || q < 0) return res.status(400).json({ error: 'qty must be a non-negative integer' });
+    const part = await getPartByNumber(part_number);
+    if(!part) return res.status(404).json({ error: 'part not found' });
+    const loc = await getLocationByBarcode(location_barcode);
+    if(!loc) return res.status(404).json({ error: 'location not found' });
+    // Get current qty to compute delta for transaction log
+    const cur = await new Promise((res,rej)=> db.get(`SELECT qty FROM stock WHERE part_id = ${qMarks([''])[0]} AND location_id = ${qMarks([''])[0]}`, [part.id, loc.id], (e,r)=> e?rej(e):res(r)));
+    const before = cur ? (parseInt(cur.qty,10)||0) : 0;
+    const result = await setStockQty(part.id, loc.id, q);
+    const after = result ? result.after : q;
+    // Log a transaction with action 'set' and qty = delta for traceability
+    const delta = after - before;
+    const userId = req.session && req.session.user ? req.session.user.id : null;
+    const txSql = usePg
+      ? 'INSERT INTO transactions (part_id, location_id, qty, action, user_id) VALUES ($1,$2,$3,$4,$5)'
+      : 'INSERT INTO transactions (part_id, location_id, qty, action, user_id) VALUES (?,?,?,?,?)';
+    db.run(txSql, [part.id, loc.id, delta, 'set', userId]);
+    res.json({ ok:true, part: part.part_number, location: loc.barcode, before, after });
+  } catch(e){
+    console.error('stock set failed', e.message);
+    res.status(500).json({ error: 'server error' });
+  }
+});
+
 // Debug endpoints (non-authenticated; consider protecting for production)
 app.get('/api/debug/parts', requireAuth, (req,res) => {
   db.all('SELECT * FROM parts', (e, rows) => {

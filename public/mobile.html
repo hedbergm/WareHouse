@@ -67,9 +67,10 @@
               </select>
             </div>
           </div>
-          <div style="display:flex;gap:8px">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button id="mv-submit" class="btn" style="flex:1">Lagre</button>
             <button id="mv-cancel" class="btn danger" style="flex:1">Avbryt</button>
+            <button id="open-edit" class="btn" type="button" style="flex:1;background:#6c757d;color:#fff">Endre del</button>
           </div>
           <div id="mv-message" class="muted" style="font-size:12px"></div>
         </div>
@@ -249,5 +250,67 @@
     window.addEventListener('hashchange', applyMode);
     applyMode();
   </script>
+
+  <!-- Edit Part Modal -->
+  <div id="edit-modal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:1000">
+    <div style="background:#fff;max-width:680px;width:94%;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25);overflow:hidden">
+      <div style="padding:12px 14px;border-bottom:1px solid #eee;display:flex;align-items:center;justify-content:space-between">
+        <strong>Endre del</strong>
+        <button id="edit-close" class="btn small" type="button">Lukk</button>
+      </div>
+      <div style="padding:12px 14px;display:flex;flex-direction:column;gap:10px">
+        <div>
+          <label style="font-size:12px">Delenummer</label>
+          <input id="ed-part" readonly style="width:100%;background:#f5f5f5">
+        </div>
+        <div>
+          <label style="font-size:12px">Beskrivelse</label>
+          <input id="ed-desc" style="width:100%">
+        </div>
+        <div>
+          <label style="font-size:12px">Min. antall</label>
+          <div style="display:flex;gap:6px;align-items:center">
+            <button id="ed-min-dec" class="btn small" type="button">−</button>
+            <input id="ed-min" type="text" value="0" inputmode="numeric" pattern="[0-9]*" style="flex:1">
+            <button id="ed-min-inc" class="btn small" type="button">+</button>
+          </div>
+        </div>
+        <div style="border:1px solid #eef1f4;padding:8px;border-radius:8px;background:#f9fbfd">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+            <div>
+              <div class="muted" style="font-size:12px">Fast lokasjon</div>
+              <div id="ed-fixed-loc" style="font-size:13px;color:#333">–</div>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button id="ed-scan-fixed" class="btn small" type="button">Skann lokasjon</button>
+              <button id="ed-clear-fixed" class="btn small danger" type="button">Fjern</button>
+            </div>
+          </div>
+        </div>
+        <div style="border:1px solid #eef1f4;padding:8px;border-radius:8px;background:#f9fbfd">
+          <div class="muted" style="font-size:12px">Lagerantall på valgt lokasjon</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+            <div>
+              <div class="muted" style="font-size:12px">Lokasjon</div>
+              <div id="ed-stock-loc" style="font-size:13px;color:#333">–</div>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button id="ed-scan-stock-loc" class="btn small" type="button">Skann lokasjon</button>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;margin-top:6px">
+            <button id="ed-qty-dec" class="btn small" type="button">−</button>
+            <input id="ed-qty" type="text" value="0" inputmode="numeric" pattern="[0-9]*" style="flex:1">
+            <button id="ed-qty-inc" class="btn small" type="button">+</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button id="ed-save" class="btn" type="button" style="flex:1">Lagre endringer</button>
+          <button id="ed-cancel" class="btn danger" type="button" style="flex:1">Avbryt</button>
+        </div>
+        <div id="ed-msg" class="muted" style="font-size:12px"></div>
+      </div>
+    </div>
+  </div>
 </body>
 </html>

@@ -19,6 +19,7 @@ const mvSubmit = document.getElementById('mv-submit');
 const mvCancel = document.getElementById('mv-cancel');
 const mvMessage = document.getElementById('mv-message');
 const mvInfo = document.getElementById('mv-info');
+const openEditBtn = document.getElementById('open-edit');
 const locBanner = document.getElementById('loc-banner');
 const locCodeEl = document.getElementById('loc-code');
 const clearLocBtn = document.getElementById('clear-loc');
@@ -46,13 +47,14 @@ window.addEventListener('hashchange', ()=> {
     // oppdater hint for lokasjon
     updateLocHint();
   }
-});
+if(mvQty){
 
 function dlog(msg){
-  if(!debugLog) return; const ts = new Date().toISOString().substr(11,8);
-  debugLog.textContent += `[${ts}] ${msg}\n`;
-}
-if(debugBtn){
+    mvQty.setAttribute('inputmode','none');
+    mvQty.setAttribute('pattern','[0-9]*');
+    mvQty.setAttribute('enterkeyhint','done');
+    mvQty.setAttribute('autocomplete','off');
+    mvQty.readOnly = true; // ikke åpne mykt tastatur
   debugBtn.addEventListener('click', ()=> {
     if(debugLog.style.display==='none'){ debugLog.style.display='block'; debugBtn.textContent='Skjul debug'; }
     else { debugLog.style.display='none'; debugBtn.textContent='Debug'; }
@@ -65,6 +67,7 @@ if(debugBtn){
 let scanMode = 'part'; // stabil modus – vi skanner kun deler via HW/WS
 let currentLocationBarcode = null; // valgt lokasjon ved scanning
 let currentPartHasFixed = null; // om valgt del har fast lokasjon
+let currentPartData = null; // sist lastet delinfo
 
 function updateLocBanner(){
   if(currentLocationBarcode){
@@ -120,6 +123,7 @@ async function handleScan(code, src){
   try {
     const data = await api('/api/stock/'+encodeURIComponent(code));
     dlog && dlog('Info lastet OK for '+code);
+    currentPartData = data;
     const part = data.part || {}; const total = data.total || 0;
     currentPartHasFixed = !!(part && part.default_location_id);
     updateLocHint();
@@ -236,4 +240,134 @@ window.__handleExternalScan = async function(code, source){
   await handleScan(clean, source||'ext');
   } catch(e){ dlog('Ekstern scan feil: '+(e.message||e)); }
 };
+
+// ===== Edit Modal Logic =====
+const edModal = document.getElementById('edit-modal');
+const edClose = document.getElementById('edit-close');
+const edPart = document.getElementById('ed-part');
+const edDesc = document.getElementById('ed-desc');
+const edMin = document.getElementById('ed-min');
+const edMinInc = document.getElementById('ed-min-inc');
+const edMinDec = document.getElementById('ed-min-dec');
+const edFixedLoc = document.getElementById('ed-fixed-loc');
+const edScanFixed = document.getElementById('ed-scan-fixed');
+const edClearFixed = document.getElementById('ed-clear-fixed');
+const edStockLoc = document.getElementById('ed-stock-loc');
+const edScanStockLoc = document.getElementById('ed-scan-stock-loc');
+const edQty = document.getElementById('ed-qty');
+const edQtyInc = document.getElementById('ed-qty-inc');
+const edQtyDec = document.getElementById('ed-qty-dec');
+const edSave = document.getElementById('ed-save');
+const edCancel = document.getElementById('ed-cancel');
+const edMsg = document.getElementById('ed-msg');
+
+let edFixedLocBarcode = null;
+let edStockLocBarcode = null;
+
+function openEdit(){ if(edModal){ edModal.classList.remove('hidden'); } }
+function closeEdit(){ if(edModal){ edModal.classList.add('hidden'); edMsg.textContent=''; } }
+function numOnlyInput(el){ if(!el) return; el.addEventListener('input', ()=> { const d=(el.value||'').replace(/\D+/g,''); if(el.value!==d) el.value=d; }); }
+numOnlyInput(edMin); numOnlyInput(edQty);
+if(edMinInc) edMinInc.addEventListener('click', ()=> { const v=parseInt(edMin.value||'0',10)||0; edMin.value=String(Math.max(0,v+1)); });
+if(edMinDec) edMinDec.addEventListener('click', ()=> { const v=parseInt(edMin.value||'0',10)||0; edMin.value=String(Math.max(0,v-1)); });
+if(edQtyInc) edQtyInc.addEventListener('click', ()=> { const v=parseInt(edQty.value||'0',10)||0; edQty.value=String(Math.max(0,v+1)); });
+if(edQtyDec) edQtyDec.addEventListener('click', ()=> { const v=parseInt(edQty.value||'0',10)||0; edQty.value=String(Math.max(0,v-1)); });
+
+function showFixedLoc(text){ edFixedLoc.textContent = text || '–'; }
+function showStockLoc(text){ edStockLoc.textContent = text || '–'; }
+
+function primeEditWithCurrent(){
+  if(!currentPartData || !currentPartData.part) return;
+  const part = currentPartData.part;
+  edPart.value = part.part_number || '';
+  edDesc.value = part.description || '';
+  edMin.value = String(part.min_qty || 0);
+  // fixed loc
+  edFixedLocBarcode = null;
+  if(part.default_location_id && Array.isArray(currentPartData.locations)){
+    const loc = currentPartData.locations.find(l=> String(l.location_id) === String(part.default_location_id));
+    if(loc){ edFixedLocBarcode = loc.barcode; showFixedLoc(loc.location_name + ' ('+loc.barcode+')'); }
+    else { showFixedLoc('–'); }
+  } else { showFixedLoc('–'); }
+  // stock loc default: use fixed loc if exists
+  edStockLocBarcode = edFixedLocBarcode || currentLocationBarcode || null;
+  if(edStockLocBarcode){
+    const loc = (currentPartData.locations||[]).find(l=> l.barcode === edStockLocBarcode);
+    showStockLoc(loc ? (loc.location_name+' ('+loc.barcode+')') : edStockLocBarcode);
+    // preset qty with existing at that loc if known
+    if(loc){ edQty.value = String(Math.max(0, parseInt(loc.qty||'0',10)||0)); } else { edQty.value = '0'; }
+  } else {
+    showStockLoc('–'); edQty.value='0';
+  }
+}
+
+if(openEditBtn){ openEditBtn.addEventListener('click', ()=> { primeEditWithCurrent(); openEdit(); }); }
+if(edClose){ edClose.addEventListener('click', closeEdit); }
+if(edCancel){ edCancel.addEventListener('click', closeEdit); }
+if(edClearFixed){ edClearFixed.addEventListener('click', ()=> { edFixedLocBarcode=null; showFixedLoc('–'); }); }
+if(edScanFixed){ edScanFixed.addEventListener('click', ()=> { dlog('Skann lokasjon for fast plass (bruk skanner)'); }); }
+if(edScanStockLoc){ edScanStockLoc.addEventListener('click', ()=> { dlog('Skann lokasjon for lagerantall (bruk skanner)'); }); }
+
+async function resolveIfLocation(code){
+  const isLoc = await isLocationBarcode(code);
+  return !!isLoc;
+}
+
+// Integrate scanner with edit modal
+const prevExternalScan = window.__handleExternalScan;
+window.__handleExternalScan = async function(code, source){
+  try{
+    const clean = String(code||'').trim();
+    if(!clean) return;
+    // if modal open and scanning a location, route to either fixed or stock loc depending on prompt focus
+    const modalOpen = edModal && !edModal.classList.contains('hidden');
+    if(modalOpen){
+      const isLoc = await resolveIfLocation(clean);
+      if(isLoc){
+        // prioritize a recent "scan fixed" click by setting a short flag
+        const target = window._scanTarget || 'stock';
+        if(target === 'fixed'){ edFixedLocBarcode = clean; showFixedLoc(clean); }
+        else { edStockLocBarcode = clean; showStockLoc(clean); }
+        window._scanTarget = null;
+        dlog('Modal satte lokasjon '+target+': '+clean);
+        return;
+      }
+    }
+    // fallback to existing behavior
+    if(prevExternalScan){ return prevExternalScan(code, source); }
+  } catch(e){ dlog('Edit modal scan feil: '+(e.message||e)); }
+};
+if(edScanFixed){ edScanFixed.addEventListener('click', ()=> { window._scanTarget = 'fixed'; }); }
+if(edScanStockLoc){ edScanStockLoc.addEventListener('click', ()=> { window._scanTarget = 'stock'; }); }
+
+if(edSave){
+  edSave.addEventListener('click', async ()=>{
+    try{
+      edSave.disabled=true; edMsg.textContent='';
+      const pn = (edPart.value||'').trim();
+      if(!pn) { edMsg.textContent='Mangler delenummer'; return; }
+      const desc = (edDesc.value||'').trim();
+      const minq = parseInt(edMin.value||'0',10)||0;
+      // update part (clear fixed if no barcode set)
+      // first resolve part id from currentPartData
+      const partId = currentPartData && currentPartData.part ? currentPartData.part.id : null;
+      if(!partId){ edMsg.textContent='Internt problem: mangler part id'; return; }
+      const body = { part_number: pn, description: desc, min_qty: minq };
+      if(edFixedLocBarcode){ body.default_location_barcode = edFixedLocBarcode; }
+      await api('/api/parts/'+partId, 'PUT', body);
+      // set stock if a stock location is chosen
+      if(edStockLocBarcode != null){
+        const qty = Math.max(0, parseInt(edQty.value||'0',10)||0);
+        await api('/api/stock/set','POST',{ part_number: pn, location_barcode: edStockLocBarcode, qty });
+      }
+      edMsg.textContent='Lagret';
+      // refresh info for the part panel
+      currentPartData = await api('/api/stock/'+encodeURIComponent(pn));
+      // update UI info block
+      await handleScan(pn, 'edit');
+      closeEdit();
+    } catch(e){ edMsg.textContent = 'Feil: '+(e.error||e.message||e); }
+    finally { edSave.disabled=false; }
+  });
+}
 
