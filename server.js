@@ -502,6 +502,19 @@ app.post('/api/stock/scan', requireAuth, async (req, res) => {
       if(!loc) return res.status(400).json({ error: 'fixed location missing' });
     }
 
+    // New: If scanning IN and the part has no fixed location yet, set it to the scanned location (feature toggleable by env)
+    try {
+      const autoSet = (process.env.AUTO_SET_FIXED_LOC_ON_IN || '1') !== '0';
+      if (autoSet && action === 'in' && !part.default_location_id && loc && loc.id) {
+        const sql = usePg ? 'UPDATE parts SET default_location_id = $1 WHERE id = $2' : 'UPDATE parts SET default_location_id = ? WHERE id = ?';
+        await new Promise((res,rej)=> db.run(sql, [loc.id, part.id], (e)=> e?rej(e):res()));
+        // reflect change in memory copy for this request
+        part.default_location_id = loc.id;
+      }
+    } catch(e) {
+      console.error('[AUTO SET FIXED LOC] failed:', e.message);
+    }
+
   const userId = req.session && req.session.user ? req.session.user.id : null;
   db.serialize(async () => {
       const ensureSql = usePg ? 'INSERT INTO stock (part_id, location_id, qty) VALUES ($1,$2,0) ON CONFLICT (part_id, location_id) DO NOTHING' : 'INSERT OR IGNORE INTO stock (part_id, location_id, qty) VALUES (?, ?, 0)';
