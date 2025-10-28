@@ -1,6 +1,7 @@
 :root{ --accent:#0b6efd; --muted:#666; --bg:#f7f9fc }
 *{box-sizing:border-box}
 body { font-family: Inter, -apple-system, system-ui, Roboto, 'Segoe UI', Arial; padding: 24px; background:var(--bg); color:#222; line-height:1.4 }
+.hidden{ display:none !important }
 body.full { max-width:none }
 main.container, .container { max-width:1080px; margin:0 auto }
 h1, h2, h3 { font-weight:600; letter-spacing:.5px }
