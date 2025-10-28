@@ -66,8 +66,8 @@ async function refresh() {
   const edMinDec = document.getElementById('ed-min-dec');
   const edFixedSel = document.getElementById('ed-fixed-select');
   const edClearFixed = document.getElementById('ed-clear-fixed');
-  const edStockLoc = document.getElementById('ed-stock-loc');
-  const edQty = document.getElementById('ed-qty');
+  const edStockRows = document.getElementById('ed-stock-rows');
+  const edAddRow = document.getElementById('ed-add-row');
 
   function openEdit(){ if(edModal) edModal.classList.remove('hidden'); }
   function closeEdit(){ if(edModal) edModal.classList.add('hidden'); if(edMsg) edMsg.textContent=''; }
@@ -80,7 +80,26 @@ async function refresh() {
   const locs = await api('/api/locations').catch(()=>[]);
   function fillLocSelect(sel, includeNone=true){ if(!sel) return; sel.innerHTML = (includeNone? '<option value="">(Velg lokasjon)</option>':'' ) + locs.map(l=> `<option value="${l.barcode}">${l.name} (${l.barcode})</option>`).join(''); }
   fillLocSelect(edFixedSel, true);
-  fillLocSelect(edStockLoc, true);
+
+  function addStockRow(defaultBarcode='', defaultQty=0){
+    const row = document.createElement('div');
+    row.className = 'stock-row';
+    row.style.display = 'flex'; row.style.gap = '6px'; row.style.alignItems = 'center';
+    const sel = document.createElement('select'); sel.className = 'row-loc'; sel.style.flex = '1'; fillLocSelect(sel, true);
+    sel.value = defaultBarcode || '';
+    const qty = document.createElement('input'); qty.className = 'row-qty'; qty.type = 'number'; qty.value = String(defaultQty||0); qty.style.width='120px';
+    const rem = document.createElement('button'); rem.type='button'; rem.className='btn small danger'; rem.textContent='Fjern';
+    rem.addEventListener('click', ()=> { row.remove(); });
+    row.appendChild(sel); row.appendChild(qty); row.appendChild(rem);
+    edStockRows.appendChild(row);
+    // Prefill qty when selecting a known location
+    sel.addEventListener('change', ()=>{
+      const barcode = sel.value;
+      const locRow = (window._currentStockLocations||[]).find(l=> l.barcode === barcode);
+      qty.value = String(Math.max(0, parseInt((locRow && locRow.qty) || '0',10)||0));
+    });
+  }
+  if(edAddRow){ edAddRow.addEventListener('click', ()=> addStockRow('', 0)); }
 
   document.querySelectorAll('.edit-part').forEach(b => b.addEventListener('click', async (e) => {
     try{
@@ -96,12 +115,14 @@ async function refresh() {
       fillLocSelect(edFixedSel, true);
       if(part.default_location_barcode){ edFixedSel.value = part.default_location_barcode; }
       else { edFixedSel.value = ''; }
-      // stock loc default to fixed if exists
-      fillLocSelect(edStockLoc, true);
-      if(part.default_location_barcode){ edStockLoc.value = part.default_location_barcode; }
-      else { edStockLoc.value=''; }
-      // preset qty if a location chosen and known
-      if(edStockLoc.value){ const locRow = (stock.locations||[]).find(l=> l.barcode===edStockLoc.value); edQty.value = String(Math.max(0, parseInt((locRow && locRow.qty)||'0',10)||0)); } else { edQty.value='0'; }
+      // stock rows: list existing locations with qty
+      edStockRows.innerHTML = '';
+      window._currentStockLocations = stock.locations || [];
+      if(window._currentStockLocations.length){
+        window._currentStockLocations.forEach(l => addStockRow(l.barcode, Math.max(0, parseInt(l.qty||'0',10)||0)));
+      } else {
+        addStockRow('', 0);
+      }
       openEdit();
       // bind save for this part id
       edSave.onclick = async ()=>{
@@ -110,8 +131,20 @@ async function refresh() {
           const pn = edPart.value.trim(); const desc = edDesc.value.trim(); const minq = parseInt(edMin.value||'0',10)||0;
           const fixedBarcode = edFixedSel.value || undefined; // undefined clears on server
           await api(`/api/parts/${id}`, 'PUT', { part_number: pn, description: desc, min_qty: minq, default_location_barcode: fixedBarcode });
-          const stockLoc = edStockLoc.value; const qtyVal = Math.max(0, parseInt(edQty.value||'0',10)||0);
-          if(stockLoc){ await api('/api/stock/set','POST',{ part_number: pn, location_barcode: stockLoc, qty: qtyVal }); }
+          // collect stock row edits
+          const rows = [...edStockRows.querySelectorAll('.stock-row')];
+          const updates = new Map();
+          for(const r of rows){
+            const sel = r.querySelector('select.row-loc');
+            const qty = r.querySelector('input.row-qty');
+            const barcode = (sel && sel.value || '').trim();
+            const qv = Math.max(0, parseInt((qty && qty.value) || '0', 10) || 0);
+            if(!barcode) continue;
+            updates.set(barcode, qv);
+          }
+          for(const [barcode, qv] of updates.entries()){
+            await api('/api/stock/set','POST',{ part_number: pn, location_barcode: barcode, qty: qv });
+          }
           edMsg.textContent='Lagret';
           closeEdit();
           await refresh();
@@ -119,8 +152,14 @@ async function refresh() {
         finally{ edSave.disabled=false; }
       };
       if(edClearFixed){ edClearFixed.onclick = ()=> { edFixedSel.value=''; } }
-      if(edStockLoc){ edStockLoc.onchange = ()=> { const sel=edStockLoc.value; const locRow = (stock.locations||[]).find(l=> l.barcode===sel); edQty.value = String(Math.max(0, parseInt((locRow && locRow.qty)||'0',10)||0)); }; }
     } catch(err){ alert('Feil ved lasting: '+(err.error||err.message||err)); }
+  }));
+
+  // Open modal also when clicking the left area of a part row (to view/edit quantities and locations directly)
+  document.querySelectorAll('.part-row .part-left').forEach(node => node.addEventListener('click', (e)=>{
+    const row = e.currentTarget.closest('.part-row');
+    const btn = row && row.querySelector('.edit-part');
+    if(btn) btn.click();
   }));
 
   // Populate dropdown for fixed location selection only
