@@ -43,6 +43,59 @@
     <div id="parts" class="list"></div>
   </section>
 
+  <!-- Edit Part Modal for desktop inventory -->
+  <div id="edit-modal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:1000">
+    <div style="background:#fff;max-width:720px;width:96%;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25);overflow:hidden">
+      <div style="padding:12px 14px;border-bottom:1px solid #eee;display:flex;align-items:center;justify-content:space-between">
+        <strong>Endre del</strong>
+        <button id="ed-close" class="btn small" type="button">Lukk</button>
+      </div>
+      <div style="padding:12px 14px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div style="flex:2;min-width:220px">
+            <label style="font-size:12px">Delenummer</label>
+            <input id="ed-part" readonly style="width:100%;background:#f5f5f5">
+          </div>
+          <div style="flex:3;min-width:240px">
+            <label style="font-size:12px">Beskrivelse</label>
+            <input id="ed-desc" style="width:100%">
+          </div>
+          <div style="flex:1;min-width:140px">
+            <label style="font-size:12px">Min. antall</label>
+            <div style="display:flex;gap:6px;align-items:center">
+              <button id="ed-min-dec" class="btn small" type="button">−</button>
+              <input id="ed-min" type="number" value="0" style="flex:1">
+              <button id="ed-min-inc" class="btn small" type="button">+</button>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div style="flex:2;min-width:260px">
+            <label style="font-size:12px">Fast lokasjon</label>
+            <div style="display:flex;gap:6px;align-items:center">
+              <select id="ed-fixed-select" style="flex:1"></select>
+              <button id="ed-clear-fixed" class="btn small danger" type="button">Fjern</button>
+            </div>
+            <div class="muted" style="font-size:12px">Velg en lokasjon eller trykk Fjern for å slette fast lokasjon</div>
+          </div>
+          <div style="flex:2;min-width:260px">
+            <label style="font-size:12px">Sett lagerantall (eksakt)</label>
+            <div style="display:flex;gap:6px;align-items:center">
+              <select id="ed-stock-loc" style="flex:1"></select>
+              <input id="ed-qty" type="number" value="0" style="width:120px">
+            </div>
+            <div class="muted" style="font-size:12px">Velg lokasjon og sett antall. Dette overstyrer eksisterende antall for valgt lokasjon.</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button id="ed-save" class="btn" type="button" style="flex:1">Lagre endringer</button>
+          <button id="ed-cancel" class="btn danger" type="button" style="flex:1">Avbryt</button>
+        </div>
+        <div id="ed-msg" class="muted" style="font-size:12px"></div>
+      </div>
+    </div>
+  </div>
+
   <section>
     <h2>Transaksjonslogg</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
@@ -62,7 +115,7 @@
 
   <!-- Manuell skann fjernet: all bevegelse skjer via mobil skanning -->
 
-    <script src="/app.js"></script>
+  <script src="/app.js"></script>
     <script>
       fetch('/api/debug/status').then(r=> r.ok ? r.json():null).then(s=>{
         if(!s) return; const b=document.getElementById('db-banner'); if(!b) return;

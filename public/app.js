@@ -53,23 +53,81 @@ async function refresh() {
     await api(`/api/parts/${id}`, 'DELETE').catch(err => alert(JSON.stringify(err)));
     await refresh();
   }));
+  // Desktop Edit modal wiring
+  const edModal = document.getElementById('edit-modal');
+  const edClose = document.getElementById('ed-close');
+  const edCancel = document.getElementById('ed-cancel');
+  const edSave = document.getElementById('ed-save');
+  const edMsg = document.getElementById('ed-msg');
+  const edPart = document.getElementById('ed-part');
+  const edDesc = document.getElementById('ed-desc');
+  const edMin = document.getElementById('ed-min');
+  const edMinInc = document.getElementById('ed-min-inc');
+  const edMinDec = document.getElementById('ed-min-dec');
+  const edFixedSel = document.getElementById('ed-fixed-select');
+  const edClearFixed = document.getElementById('ed-clear-fixed');
+  const edStockLoc = document.getElementById('ed-stock-loc');
+  const edQty = document.getElementById('ed-qty');
+
+  function openEdit(){ if(edModal) edModal.classList.remove('hidden'); }
+  function closeEdit(){ if(edModal) edModal.classList.add('hidden'); if(edMsg) edMsg.textContent=''; }
+  if(edClose) edClose.addEventListener('click', closeEdit);
+  if(edCancel) edCancel.addEventListener('click', closeEdit);
+  if(edMinInc) edMinInc.addEventListener('click', ()=> { const v=parseInt(edMin.value||'0',10)||0; edMin.value=String(Math.max(0, v+1)); });
+  if(edMinDec) edMinDec.addEventListener('click', ()=> { const v=parseInt(edMin.value||'0',10)||0; edMin.value=String(Math.max(0, v-1)); });
+
+  // populate selects with locations
+  const locs = await api('/api/locations').catch(()=>[]);
+  function fillLocSelect(sel, includeNone=true){ if(!sel) return; sel.innerHTML = (includeNone? '<option value="">(Velg lokasjon)</option>':'' ) + locs.map(l=> `<option value="${l.barcode}">${l.name} (${l.barcode})</option>`).join(''); }
+  fillLocSelect(edFixedSel, true);
+  fillLocSelect(edStockLoc, true);
+
   document.querySelectorAll('.edit-part').forEach(b => b.addEventListener('click', async (e) => {
-  const id = e.currentTarget.dataset.id;
-  const row = e.currentTarget.closest('.part-row');
-  const pn = prompt('Nytt delenummer', row.querySelector('strong').innerText) || '';
-  const desc = prompt('Ny beskrivelse', row.querySelector('.desc').innerText) || '';
-  const minq = prompt('Ny min antall', '0');
-  const defLoc = prompt('Fast lokasjon barcode (tom for ingen)', '');
-  await api(`/api/parts/${id}`, 'PUT', { part_number: pn.trim(), description: desc.trim(), min_qty: parseInt(minq || '0', 10), default_location_barcode: defLoc ? defLoc.trim() : undefined }).catch(err => alert(JSON.stringify(err)));
-  await refresh();
+    try{
+      const id = e.currentTarget.dataset.id;
+      const part = (await api('/api/parts')).find(p=> String(p.id)===String(id));
+      if(!part) return alert('Fant ikke del');
+      const stock = await api(`/api/stock/${encodeURIComponent(part.part_number)}`);
+      // prime fields
+      edPart.value = part.part_number || '';
+      edDesc.value = part.description || '';
+      edMin.value = String(part.min_qty || 0);
+      // fixed select
+      fillLocSelect(edFixedSel, true);
+      if(part.default_location_barcode){ edFixedSel.value = part.default_location_barcode; }
+      else { edFixedSel.value = ''; }
+      // stock loc default to fixed if exists
+      fillLocSelect(edStockLoc, true);
+      if(part.default_location_barcode){ edStockLoc.value = part.default_location_barcode; }
+      else { edStockLoc.value=''; }
+      // preset qty if a location chosen and known
+      if(edStockLoc.value){ const locRow = (stock.locations||[]).find(l=> l.barcode===edStockLoc.value); edQty.value = String(Math.max(0, parseInt((locRow && locRow.qty)||'0',10)||0)); } else { edQty.value='0'; }
+      openEdit();
+      // bind save for this part id
+      edSave.onclick = async ()=>{
+        try{
+          edSave.disabled=true; edMsg.textContent='';
+          const pn = edPart.value.trim(); const desc = edDesc.value.trim(); const minq = parseInt(edMin.value||'0',10)||0;
+          const fixedBarcode = edFixedSel.value || undefined; // undefined clears on server
+          await api(`/api/parts/${id}`, 'PUT', { part_number: pn, description: desc, min_qty: minq, default_location_barcode: fixedBarcode });
+          const stockLoc = edStockLoc.value; const qtyVal = Math.max(0, parseInt(edQty.value||'0',10)||0);
+          if(stockLoc){ await api('/api/stock/set','POST',{ part_number: pn, location_barcode: stockLoc, qty: qtyVal }); }
+          edMsg.textContent='Lagret';
+          closeEdit();
+          await refresh();
+        } catch(err){ edMsg.textContent = 'Feil: '+(err.error||err.message||err); }
+        finally{ edSave.disabled=false; }
+      };
+      if(edClearFixed){ edClearFixed.onclick = ()=> { edFixedSel.value=''; } }
+      if(edStockLoc){ edStockLoc.onchange = ()=> { const sel=edStockLoc.value; const locRow = (stock.locations||[]).find(l=> l.barcode===sel); edQty.value = String(Math.max(0, parseInt((locRow && locRow.qty)||'0',10)||0)); }; }
+    } catch(err){ alert('Feil ved lasting: '+(err.error||err.message||err)); }
   }));
 
-  const locs = await api('/api/locations').catch(()=>[]);
   // Populate dropdown for fixed location selection only
   const ddl = document.getElementById('part-default-loc');
   if (ddl) {
     const current = ddl.value;
-    ddl.innerHTML = '<option value="">(Ingen fast lokasjon)</option>' + locs.map(l => `<option value="${l.barcode}">${l.name} (${l.barcode})</option>`).join('');
+    ddl.innerHTML = '<option value="">(Ingen fast lokasjon)</option>' + (locs||[]).map(l => `<option value="${l.barcode}">${l.name} (${l.barcode})</option>`).join('');
     if (current && [...ddl.options].some(o => o.value === current)) ddl.value = current;
   }
 
