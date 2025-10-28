@@ -588,8 +588,9 @@ app.post('/api/stock/set', requireAuth, async (req, res) => {
     if(!part) return res.status(404).json({ error: 'part not found' });
     const loc = await getLocationByBarcode(location_barcode);
     if(!loc) return res.status(404).json({ error: 'location not found' });
-    // Get current qty to compute delta for transaction log
-    const cur = await new Promise((res,rej)=> db.get(`SELECT qty FROM stock WHERE part_id = ${qMarks([''])[0]} AND location_id = ${qMarks([''])[0]}`, [part.id, loc.id], (e,r)=> e?rej(e):res(r)));
+  // Get current qty to compute delta for transaction log
+  const marksSet = qMarks([part.id, loc.id]);
+  const cur = await new Promise((res,rej)=> db.get(`SELECT qty FROM stock WHERE part_id = ${marksSet[0]} AND location_id = ${marksSet[1]}`, [part.id, loc.id], (e,r)=> e?rej(e):res(r)));
     const before = cur ? (parseInt(cur.qty,10)||0) : 0;
     const result = await setStockQty(part.id, loc.id, q);
     const after = result ? result.after : q;
@@ -830,7 +831,8 @@ function guessCol(keys, candidates){
 
 async function getOrCreateLocationByCode(code){
   const codeStr = String(code||'').trim(); if(!codeStr) return null;
-  let loc = await new Promise((res,rej)=> db.get(`SELECT * FROM locations WHERE barcode = ${qMarks([''])[0]} OR name = ${qMarks([''])[0]}`,[codeStr, codeStr],(e,r)=> e?rej(e):res(r)));
+  const marksLoc = qMarks([codeStr, codeStr]);
+  let loc = await new Promise((res,rej)=> db.get(`SELECT * FROM locations WHERE barcode = ${marksLoc[0]} OR name = ${marksLoc[1]}`,[codeStr, codeStr],(e,r)=> e?rej(e):res(r)));
   if(loc) return loc;
   // Create with name=barcode when missing
   if(usePg){
@@ -886,7 +888,8 @@ async function upsertPartPartial({ pn, description, min_qty, defaultLocId }){
 
 async function setStockQty(partId, locId, qty){
   const q = Math.max(0, parseInt(qty||'0',10)||0);
-  const existing = await new Promise((res,rej)=> db.get(`SELECT id, qty FROM stock WHERE part_id = ${qMarks([''])[0]} AND location_id = ${qMarks([''])[0]}`, [partId, locId], (e,r)=> e?rej(e):res(r)));
+  const marks = qMarks([partId, locId]);
+  const existing = await new Promise((res,rej)=> db.get(`SELECT id, qty FROM stock WHERE part_id = ${marks[0]} AND location_id = ${marks[1]}`, [partId, locId], (e,r)=> e?rej(e):res(r)));
   if(existing){
     const sql = usePg ? 'UPDATE stock SET qty = $1 WHERE id = $2' : 'UPDATE stock SET qty = ? WHERE id = ?';
     await new Promise((res,rej)=> db.run(sql,[q, existing.id], (e)=> e?rej(e):res()));
