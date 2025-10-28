@@ -142,8 +142,16 @@ async function refresh() {
             if(!barcode) continue;
             updates.set(barcode, qv);
           }
+          // also detect removed locations from original list and set them to 0
+          const original = new Set((window._currentStockLocations||[]).map(l=> String(l.barcode)));
+          const kept = new Set(updates.keys());
+          const removed = [...original].filter(bc => !kept.has(bc));
+
           for(const [barcode, qv] of updates.entries()){
             await api('/api/stock/set','POST',{ part_number: pn, location_barcode: barcode, qty: qv });
+          }
+          for(const bc of removed){
+            await api('/api/stock/set','POST',{ part_number: pn, location_barcode: bc, qty: 0 });
           }
           edMsg.textContent='Lagret';
           closeEdit();
