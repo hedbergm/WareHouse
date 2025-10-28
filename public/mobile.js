@@ -19,6 +19,10 @@ const mvSubmit = document.getElementById('mv-submit');
 const mvCancel = document.getElementById('mv-cancel');
 const mvMessage = document.getElementById('mv-message');
 const mvInfo = document.getElementById('mv-info');
+const locBanner = document.getElementById('loc-banner');
+const locCodeEl = document.getElementById('loc-code');
+const clearLocBtn = document.getElementById('clear-loc');
+const mvLocHint = document.getElementById('mv-loc-hint');
 const debugBtn = document.getElementById('toggle-debug');
 const debugLog = document.getElementById('debug-log');
 const qtyIncBtn = document.getElementById('qty-inc');
@@ -39,6 +43,8 @@ window.addEventListener('hashchange', ()=> {
   if(!movementPanel.classList.contains('hidden')){
     if(movementMode){ mvAction.value = movementMode; mvAction.disabled = true; }
     else { mvAction.disabled = false; }
+    // oppdater hint for lokasjon
+    updateLocHint();
   }
 });
 
@@ -57,6 +63,41 @@ if(debugBtn){
 // Kamera-funksjoner fjernet
 
 let scanMode = 'part'; // stabil modus – vi skanner kun deler via HW/WS
+let currentLocationBarcode = null; // valgt lokasjon ved scanning
+let currentPartHasFixed = null; // om valgt del har fast lokasjon
+
+function updateLocBanner(){
+  if(currentLocationBarcode){
+    if(locCodeEl) locCodeEl.textContent = currentLocationBarcode;
+    if(locBanner) locBanner.style.display = 'block';
+  } else {
+    if(locBanner) locBanner.style.display = 'none';
+    if(locCodeEl) locCodeEl.textContent = '';
+  }
+}
+function setCurrentLocation(barcode){
+  currentLocationBarcode = barcode || null;
+  updateLocBanner();
+  if(barcode){
+    lastScan.innerText = 'Lokasjon: '+barcode;
+    dlog && dlog('Valgt lokasjon: '+barcode);
+  }
+}
+if(clearLocBtn){
+  clearLocBtn.addEventListener('click', ()=> { setCurrentLocation(null); });
+}
+
+async function isLocationBarcode(code){
+  try {
+    const res = await fetch('/api/locations/'+encodeURIComponent(code)+'/stock');
+    if(res.status===401){
+      // ikke innlogget
+      try { window.location.href = '/mobile-login.html'; } catch(_){}
+      return false;
+    }
+    return res.ok;
+  } catch(_){ return false; }
+}
 
 async function handleScan(code, src){
   lastScan.innerText = 'Del: '+code + (src? ' ['+src.toUpperCase()+']':'' );
@@ -80,6 +121,8 @@ async function handleScan(code, src){
     const data = await api('/api/stock/'+encodeURIComponent(code));
     dlog && dlog('Info lastet OK for '+code);
     const part = data.part || {}; const total = data.total || 0;
+    currentPartHasFixed = !!(part && part.default_location_id);
+    updateLocHint();
     const minq = part.min_qty ?? 0;
     const desc = part.description || '';
     const diff = total - minq;
@@ -102,6 +145,13 @@ async function handleScan(code, src){
     mvInfo.style.display='block'; mvInfo.innerHTML='<span style="color:#c00">Fant ikke del i systemet (opprettes ved lagring om deler lages et annet sted)</span>';
   }
 }
+function updateLocHint(){
+  if(!mvLocHint) return;
+  const act = movementMode || mvAction.value || 'in';
+  if(!currentPartHasFixed && act==='in') { mvLocHint.style.display='block'; }
+  else { mvLocHint.style.display='none'; }
+}
+if(mvAction){ mvAction.addEventListener('change', updateLocHint); }
 
 // handle manual add
 // Manuell del-knapp fjernet
@@ -112,9 +162,18 @@ mvSubmit.addEventListener('click', async () => {
   const qty = parseInt(mvQty.value||'0',10);
   const action = movementMode || mvAction.value; // tvang om satt
   if(!part || !qty){ mvMessage.textContent='Mangler felt'; return; }
+  // Hvis INN for del uten fast lokasjon, krever vi valgt lokasjon først
+  if(action==='in' && currentPartHasFixed===false && !currentLocationBarcode){
+    mvMessage.textContent = 'Denne delen mangler fast lokasjon. Skann lokasjon først (scan lokasjonsstrekkoden).';
+    return;
+  }
   mvSubmit.disabled=true;
   try {
-  await api('/api/stock/scan','POST',{ part_number: part, qty, action });
+  const payload = { part_number: part, qty, action };
+  if(action==='in' && currentPartHasFixed===false && currentLocationBarcode){
+    payload.location_barcode = currentLocationBarcode;
+  }
+  await api('/api/stock/scan','POST', payload);
   mvMessage.textContent='Lagret'; movementPanel.classList.add('hidden');
   } catch(e){ mvMessage.textContent='Feil: '+ (e.error||''); }
   finally { mvSubmit.disabled=false; }
@@ -171,6 +230,9 @@ window.__handleExternalScan = async function(code, source){
     dlog('Tolk skann som antall: '+clean);
     return;
   }
+  // Først: sjekk om dette er en lokasjonskode
+  const isLoc = await isLocationBarcode(clean);
+  if(isLoc){ setCurrentLocation(clean); return; }
   await handleScan(clean, source||'ext');
   } catch(e){ dlog('Ekstern scan feil: '+(e.message||e)); }
 };
